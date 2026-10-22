@@ -10,18 +10,56 @@
     html, body { margin: 0; height: 100%; }
     body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
     #map { position: fixed; inset: 0; }
-    .bar {
+
+    .search {
       position: fixed; left: 12px; right: 12px;
       top: calc(env(safe-area-inset-top, 0px) + 12px);
-      background: #fff; color: #111; border-radius: 12px;
-      padding: 12px 14px; font-size: 16px; font-weight: 600;
-      box-shadow: 0 2px 10px rgba(0,0,0,.25); z-index: 5;
+      z-index: 5;
     }
+    .search-box {
+      display: flex; align-items: center; gap: 8px;
+      background: #fff; border-radius: 12px;
+      padding: 4px 6px 4px 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.25);
+    }
+    .search-box input {
+      flex: 1; min-width: 0; border: 0; outline: none;
+      font-size: 17px; /* 16px+ stops iPhone zooming in */
+      padding: 10px 0; background: transparent; color: #111;
+    }
+    .search-box button {
+      border: 0; background: #eef1f5; color: #333;
+      width: 40px; height: 40px; border-radius: 10px;
+      font-size: 20px; cursor: pointer;
+    }
+    .results {
+      list-style: none; margin: 8px 0 0; padding: 0;
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.25);
+      max-height: 55vh; overflow-y: auto;
+    }
+    .results:empty { display: none; }
+    .results li {
+      padding: 12px 14px; border-bottom: 1px solid #eee; cursor: pointer;
+    }
+    .results li:last-child { border-bottom: 0; }
+    .results li:active { background: #f2f5fa; }
+    .results .name { font-weight: 600; font-size: 15px; color: #111; }
+    .results .addr { font-size: 13px; color: #555; margin-top: 2px; }
+    .results .msg { color: #555; cursor: default; }
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <div class="bar">Rider Map SG</div>
+
+  <div class="search">
+    <div class="search-box">
+      <input id="q" type="search" placeholder="Search a place, block or postal code"
+             autocomplete="off" enterkeyhint="search" aria-label="Search places" />
+      <button id="clear" type="button" aria-label="Clear search">×</button>
+    </div>
+    <ul id="results" class="results"></ul>
+  </div>
 
   <script type="module">
     import * as maplibregl from 'https://unpkg.com/maplibre-gl@^6.15.0/dist/maplibre-gl.mjs';
@@ -34,8 +72,88 @@
       zoom: 11.2,
       maxBounds: [[103.55, 1.12], [104.15, 1.50]]
     });
-
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+
+    const input = document.getElementById('q');
+    const list = document.getElementById('results');
+    const clearBtn = document.getElementById('clear');
+    let marker = null;
+    let timer = null;
+    let lastQuery = '';
+
+    function showMessage(text) {
+      list.innerHTML = '';
+      const li = document.createElement('li');
+      li.className = 'msg';
+      li.textContent = text;
+      list.appendChild(li);
+    }
+
+    function showResults(results) {
+      list.innerHTML = '';
+      if (!results.length) { showMessage('No places found'); return; }
+      for (const r of results) {
+        const li = document.createElement('li');
+        const name = document.createElement('div');
+        name.className = 'name';
+        name.textContent = r.name;
+        const addr = document.createElement('div');
+        addr.className = 'addr';
+        addr.textContent = r.address;
+        li.append(name, addr);
+        li.addEventListener('click', () => choose(r));
+        list.appendChild(li);
+      }
+    }
+
+    function choose(r) {
+      list.innerHTML = '';
+      input.value = r.name;
+      input.blur(); // hide the phone keyboard
+      if (marker) marker.remove();
+      marker = new maplibregl.Marker({ color: '#0b5fff' })
+        .setLngLat([r.lng, r.lat])
+        .setPopup(new maplibregl.Popup({ offset: 25 }).setText(r.address))
+        .addTo(map);
+      map.flyTo({ center: [r.lng, r.lat], zoom: 16 });
+    }
+
+    async function search(q) {
+      lastQuery = q;
+      showMessage('Searching…');
+      try {
+        const resp = await fetch('/api/search?q=' + encodeURIComponent(q));
+        const data = await resp.json();
+        if (q !== lastQuery) return; // a newer search has started
+        if (data.error) { showMessage('Search error: ' + data.error); return; }
+        showResults(data.results || []);
+      } catch (e) {
+        if (q === lastQuery) showMessage('Could not reach search. Check your connection.');
+      }
+    }
+
+    input.addEventListener('input', () => {
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (q.length < 2) { list.innerHTML = ''; lastQuery = ''; return; }
+      timer = setTimeout(() => search(q), 400); // wait until typing pauses
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        clearTimeout(timer);
+        const q = input.value.trim();
+        if (q.length >= 2) search(q);
+      }
+    });
+
+    clearBtn.addEventListener('click', () => {
+      input.value = '';
+      list.innerHTML = '';
+      lastQuery = '';
+      if (marker) { marker.remove(); marker = null; }
+      input.focus();
+    });
   </script>
 </body>
 </html>
