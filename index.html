@@ -11,6 +11,7 @@
     body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
     #map { position: fixed; inset: 0; }
 
+    /* Search bar */
     .search {
       position: fixed; left: 12px; right: 12px;
       top: calc(env(safe-area-inset-top, 0px) + 12px);
@@ -39,14 +40,36 @@
       max-height: 55vh; overflow-y: auto;
     }
     .results:empty { display: none; }
-    .results li {
-      padding: 12px 14px; border-bottom: 1px solid #eee; cursor: pointer;
-    }
+    .results li { padding: 12px 14px; border-bottom: 1px solid #eee; cursor: pointer; }
     .results li:last-child { border-bottom: 0; }
     .results li:active { background: #f2f5fa; }
     .results .name { font-weight: 600; font-size: 15px; color: #111; }
     .results .addr { font-size: 13px; color: #555; margin-top: 2px; }
     .results .msg { color: #555; cursor: default; }
+
+    /* Bottom card */
+    .card {
+      position: fixed; left: 12px; right: 12px;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+      background: #fff; border-radius: 14px; padding: 14px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.3); z-index: 5; color: #111;
+    }
+    .card[hidden] { display: none; }
+    .card .place { font-weight: 600; font-size: 16px; }
+    .card .sub { font-size: 13px; color: #555; margin-top: 2px; }
+    .card .row { display: flex; gap: 8px; margin-top: 12px; }
+    .card button {
+      flex: 1; border: 0; border-radius: 10px; padding: 13px 10px;
+      font-size: 16px; font-weight: 600; cursor: pointer;
+    }
+    .btn-start { background: #e5f4e4; color: #1b6b1b; }
+    .btn-end   { background: #fbebeb; color: #a11d1d; }
+    .btn-clear { background: #eef1f5; color: #333; }
+    .trip { font-size: 14px; line-height: 1.5; }
+    .trip .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+    .summary { font-size: 22px; font-weight: 700; margin-top: 8px; }
+    .summary small { font-size: 14px; font-weight: 500; color: #555; }
+    .error { color: #a11d1d; font-size: 14px; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -61,8 +84,14 @@
     <ul id="results" class="results"></ul>
   </div>
 
+  <div id="card" class="card" hidden></div>
+
   <script type="module">
     import * as maplibregl from 'https://unpkg.com/maplibre-gl@^6.15.0/dist/maplibre-gl.mjs';
+
+    const START_COLOUR = '#1b9e3e';
+    const END_COLOUR = '#d62828';
+    const ROUTE_COLOUR = '#0b5fff';
 
     // Centre of Singapore (longitude, latitude)
     const map = new maplibregl.Map({
@@ -74,48 +103,88 @@
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
+    // Empty route line, filled in when a route arrives
+    map.on('load', () => {
+      map.addSource('route', { type: 'geojson', data: emptyLine() });
+      map.addLayer({ id: 'route-casing', type: 'line', source: 'route',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#ffffff', 'line-width': 10 } });
+      map.addLayer({ id: 'route-line', type: 'line', source: 'route',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': ROUTE_COLOUR, 'line-width': 6 } });
+    });
+
+    function emptyLine() {
+      return { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } };
+    }
+
     const input = document.getElementById('q');
     const list = document.getElementById('results');
     const clearBtn = document.getElementById('clear');
-    let marker = null;
+    const card = document.getElementById('card');
+
+    let picked = null;       // place chosen from search, waiting for Start/Go
+    let pickedMarker = null;
+    let start = null, end = null;
+    let startMarker = null, endMarker = null;
     let timer = null;
     let lastQuery = '';
 
+    // ---------- helpers ----------
+    function el(tag, className, text) {
+      const e = document.createElement(tag);
+      if (className) e.className = className;
+      if (text != null) e.textContent = text;
+      return e;
+    }
+
+    function formatDistance(m) {
+      if (!m) return '';
+      return m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(1) + ' km';
+    }
+
+    function formatTime(s) {
+      if (!s) return '';
+      const mins = Math.max(1, Math.round(s / 60));
+      if (mins < 60) return mins + ' min';
+      return Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min';
+    }
+
+    // Keep the +/- buttons above the card
+    function liftControls() {
+      const ctrl = document.querySelector('.maplibregl-ctrl-bottom-right');
+      if (!ctrl) return;
+      ctrl.style.bottom = card.hidden ? '' : (card.offsetHeight + 12) + 'px';
+    }
+
+    function showCard(children) {
+      card.innerHTML = '';
+      children.forEach((c) => card.appendChild(c));
+      card.hidden = false;
+      liftControls();
+    }
+
+    function hideCard() {
+      card.hidden = true;
+      card.innerHTML = '';
+      liftControls();
+    }
+
+    // ---------- search ----------
     function showMessage(text) {
       list.innerHTML = '';
-      const li = document.createElement('li');
-      li.className = 'msg';
-      li.textContent = text;
-      list.appendChild(li);
+      list.appendChild(el('li', 'msg', text));
     }
 
     function showResults(results) {
       list.innerHTML = '';
       if (!results.length) { showMessage('No places found'); return; }
       for (const r of results) {
-        const li = document.createElement('li');
-        const name = document.createElement('div');
-        name.className = 'name';
-        name.textContent = r.name;
-        const addr = document.createElement('div');
-        addr.className = 'addr';
-        addr.textContent = r.address;
-        li.append(name, addr);
+        const li = el('li');
+        li.append(el('div', 'name', r.name), el('div', 'addr', r.address));
         li.addEventListener('click', () => choose(r));
         list.appendChild(li);
       }
-    }
-
-    function choose(r) {
-      list.innerHTML = '';
-      input.value = r.name;
-      input.blur(); // hide the phone keyboard
-      if (marker) marker.remove();
-      marker = new maplibregl.Marker({ color: '#0b5fff' })
-        .setLngLat([r.lng, r.lat])
-        .setPopup(new maplibregl.Popup({ offset: 25 }).setText(r.address))
-        .addTo(map);
-      map.flyTo({ center: [r.lng, r.lat], zoom: 16 });
     }
 
     async function search(q) {
@@ -124,7 +193,7 @@
       try {
         const resp = await fetch('/api/search?q=' + encodeURIComponent(q));
         const data = await resp.json();
-        if (q !== lastQuery) return; // a newer search has started
+        if (q !== lastQuery) return;
         if (data.error) { showMessage('Search error: ' + data.error); return; }
         showResults(data.results || []);
       } catch (e) {
@@ -136,7 +205,7 @@
       clearTimeout(timer);
       const q = input.value.trim();
       if (q.length < 2) { list.innerHTML = ''; lastQuery = ''; return; }
-      timer = setTimeout(() => search(q), 400); // wait until typing pauses
+      timer = setTimeout(() => search(q), 400);
     });
 
     input.addEventListener('keydown', (e) => {
@@ -151,9 +220,104 @@
       input.value = '';
       list.innerHTML = '';
       lastQuery = '';
-      if (marker) { marker.remove(); marker = null; }
       input.focus();
     });
+
+    // ---------- choosing a place ----------
+    function choose(r) {
+      list.innerHTML = '';
+      input.value = '';
+      input.blur(); // hide the phone keyboard
+      picked = r;
+      if (pickedMarker) pickedMarker.remove();
+      pickedMarker = new maplibregl.Marker({ color: ROUTE_COLOUR }).setLngLat([r.lng, r.lat]).addTo(map);
+      map.flyTo({ center: [r.lng, r.lat], zoom: 16 });
+
+      const startBtn = el('button', 'btn-start', 'Start here');
+      const endBtn = el('button', 'btn-end', 'Go here');
+      startBtn.addEventListener('click', () => setPoint('start'));
+      endBtn.addEventListener('click', () => setPoint('end'));
+      const row = el('div', 'row');
+      row.append(startBtn, endBtn);
+      showCard([el('div', 'place', r.name), el('div', 'sub', r.address), row]);
+    }
+
+    function setPoint(which) {
+      if (!picked) return;
+      if (pickedMarker) { pickedMarker.remove(); pickedMarker = null; }
+      const lngLat = [picked.lng, picked.lat];
+      if (which === 'start') {
+        start = picked;
+        if (startMarker) startMarker.remove();
+        startMarker = new maplibregl.Marker({ color: START_COLOUR }).setLngLat(lngLat).addTo(map);
+      } else {
+        end = picked;
+        if (endMarker) endMarker.remove();
+        endMarker = new maplibregl.Marker({ color: END_COLOUR }).setLngLat(lngLat).addTo(map);
+      }
+      picked = null;
+      if (start && end) {
+        getRoute();
+      } else {
+        showTrip();
+      }
+    }
+
+    // ---------- trip card ----------
+    function tripLine(colour, label, place) {
+      const line = el('div');
+      const dot = el('span', 'dot');
+      dot.style.background = colour;
+      line.append(dot, document.createTextNode(label + ': ' + (place ? place.name : 'search for a place')));
+      return line;
+    }
+
+    function showTrip(extra = []) {
+      const trip = el('div', 'trip');
+      trip.append(tripLine(START_COLOUR, 'From', start), tripLine(END_COLOUR, 'To', end));
+      const clear = el('button', 'btn-clear', 'Clear route');
+      clear.addEventListener('click', clearRoute);
+      const row = el('div', 'row');
+      row.append(clear);
+      showCard([trip, ...extra, row]);
+    }
+
+    function clearRoute() {
+      start = end = picked = null;
+      [startMarker, endMarker, pickedMarker].forEach((m) => m && m.remove());
+      startMarker = endMarker = pickedMarker = null;
+      const src = map.getSource('route');
+      if (src) src.setData(emptyLine());
+      hideCard();
+    }
+
+    // ---------- routing ----------
+    async function getRoute() {
+      showTrip([el('div', 'sub', 'Finding a cycling route…')]);
+      const url = '/api/route?type=cycle'
+        + '&start=' + start.lat + ',' + start.lng
+        + '&end=' + end.lat + ',' + end.lng;
+      try {
+        const resp = await fetch(url);
+        const data = await resp.json();
+        if (data.error) { showTrip([el('div', 'error', 'Route error: ' + data.error)]); return; }
+
+        const src = map.getSource('route');
+        if (src) src.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: data.coordinates } });
+
+        const bounds = data.coordinates.reduce(
+          (b, c) => b.extend(c), new maplibregl.LngLatBounds(data.coordinates[0], data.coordinates[0]));
+        map.fitBounds(bounds, { padding: { top: 90, bottom: 220, left: 40, right: 40 }, maxZoom: 17 });
+
+        const summary = el('div', 'summary');
+        summary.append(
+          document.createTextNode(formatDistance(data.distance_m)),
+          el('small', null, '  ·  ' + formatTime(data.time_s) + ' by bicycle'));
+        showTrip([summary]);
+      } catch (e) {
+        showTrip([el('div', 'error', 'Could not reach the route service. Check your connection.')]);
+      }
+    }
   </script>
 </body>
 </html>
