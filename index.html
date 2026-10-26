@@ -47,6 +47,17 @@
     .results .addr { font-size: 13px; color: #555; margin-top: 2px; }
     .results .msg { color: #555; cursor: default; }
 
+    /* Floating "start from my location" button */
+    .locate {
+      position: fixed; left: 12px;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+      z-index: 4; border: 0; border-radius: 24px;
+      background: #fff; color: #0b5fff;
+      padding: 12px 16px; font-size: 15px; font-weight: 600;
+      box-shadow: 0 2px 10px rgba(0,0,0,.25); cursor: pointer;
+    }
+    .locate[hidden] { display: none; }
+
     /* Bottom card */
     .card {
       position: fixed; left: 12px; right: 12px;
@@ -65,6 +76,18 @@
     .btn-start { background: #e5f4e4; color: #1b6b1b; }
     .btn-end   { background: #fbebeb; color: #a11d1d; }
     .btn-clear { background: #eef1f5; color: #333; }
+    .btn-me    { background: #e7f1fb; color: #0b5fff; }
+
+    /* Cycle / Drive / Walk switch */
+    .modes {
+      display: flex; background: #eef1f5; border-radius: 10px; padding: 3px; gap: 3px;
+      margin-bottom: 10px;
+    }
+    .card .modes button {
+      padding: 10px 4px; font-size: 15px; background: transparent; color: #444;
+    }
+    .card .modes button.on { background: #fff; color: #0b5fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+
     .trip { font-size: 14px; line-height: 1.5; }
     .trip .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
     .summary { font-size: 22px; font-weight: 700; margin-top: 8px; }
@@ -84,6 +107,8 @@
     <ul id="results" class="results"></ul>
   </div>
 
+  <button id="locate" class="locate" type="button">◎ Start from my location</button>
+
   <div id="card" class="card" hidden></div>
 
   <script type="module">
@@ -91,7 +116,19 @@
 
     const START_COLOUR = '#1b9e3e';
     const END_COLOUR = '#d62828';
-    const ROUTE_COLOUR = '#0b5fff';
+
+    const MODES = {
+      cycle: { label: 'Cycle', words: 'by bicycle', colour: '#0b5fff' },
+      drive: { label: 'Drive', words: 'by car',     colour: '#7a3cff' },
+      walk:  { label: 'Walk',  words: 'on foot',    colour: '#0a8a7a' }
+    };
+
+    // Remember the last travel mode on this phone (falls back to Cycle)
+    let mode = 'cycle';
+    try {
+      const saved = localStorage.getItem('mode');
+      if (MODES[saved]) mode = saved;
+    } catch (e) { /* storage blocked: keep default */ }
 
     // Centre of Singapore (longitude, latitude)
     const map = new maplibregl.Map({
@@ -111,7 +148,7 @@
         paint: { 'line-color': '#ffffff', 'line-width': 10 } });
       map.addLayer({ id: 'route-line', type: 'line', source: 'route',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': ROUTE_COLOUR, 'line-width': 6 } });
+        paint: { 'line-color': MODES[mode].colour, 'line-width': 6 } });
     });
 
     function emptyLine() {
@@ -122,6 +159,7 @@
     const list = document.getElementById('results');
     const clearBtn = document.getElementById('clear');
     const card = document.getElementById('card');
+    const locateBtn = document.getElementById('locate');
 
     let picked = null;       // place chosen from search, waiting for Start/Go
     let pickedMarker = null;
@@ -129,6 +167,8 @@
     let startMarker = null, endMarker = null;
     let timer = null;
     let lastQuery = '';
+    let routeRequest = 0;    // ignores answers to older route requests
+    let lastRoute = null;    // last successful route
 
     // ---------- helpers ----------
     function el(tag, className, text) {
@@ -150,6 +190,23 @@
       return Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min';
     }
 
+    function inSingapore(lat, lng) {
+      return lat > 1.1 && lat < 1.5 && lng > 103.5 && lng < 104.2;
+    }
+
+    // Fetch JSON, turning non-JSON replies into a readable error
+    async function getJson(url) {
+      const resp = await fetch(url);
+      let data;
+      try {
+        data = await resp.json();
+      } catch (e) {
+        throw new Error('The service replied with status ' + resp.status + '.');
+      }
+      if (data.error) throw new Error(data.error);
+      return data;
+    }
+
     // Keep the +/- buttons above the card
     function liftControls() {
       const ctrl = document.querySelector('.maplibregl-ctrl-bottom-right');
@@ -161,12 +218,14 @@
       card.innerHTML = '';
       children.forEach((c) => card.appendChild(c));
       card.hidden = false;
+      locateBtn.hidden = true;
       liftControls();
     }
 
     function hideCard() {
       card.hidden = true;
       card.innerHTML = '';
+      locateBtn.hidden = false;
       liftControls();
     }
 
@@ -191,13 +250,11 @@
       lastQuery = q;
       showMessage('Searching…');
       try {
-        const resp = await fetch('/api/search?q=' + encodeURIComponent(q));
-        const data = await resp.json();
+        const data = await getJson('/api/search?q=' + encodeURIComponent(q));
         if (q !== lastQuery) return;
-        if (data.error) { showMessage('Search error: ' + data.error); return; }
         showResults(data.results || []);
       } catch (e) {
-        if (q === lastQuery) showMessage('Could not reach search. Check your connection.');
+        if (q === lastQuery) showMessage('Search problem: ' + e.message);
       }
     }
 
@@ -230,38 +287,68 @@
       input.blur(); // hide the phone keyboard
       picked = r;
       if (pickedMarker) pickedMarker.remove();
-      pickedMarker = new maplibregl.Marker({ color: ROUTE_COLOUR }).setLngLat([r.lng, r.lat]).addTo(map);
+      pickedMarker = new maplibregl.Marker({ color: '#0b5fff' }).setLngLat([r.lng, r.lat]).addTo(map);
       map.flyTo({ center: [r.lng, r.lat], zoom: 16 });
 
       const startBtn = el('button', 'btn-start', 'Start here');
       const endBtn = el('button', 'btn-end', 'Go here');
-      startBtn.addEventListener('click', () => setPoint('start'));
-      endBtn.addEventListener('click', () => setPoint('end'));
+      startBtn.addEventListener('click', () => setPoint('start', picked));
+      endBtn.addEventListener('click', () => setPoint('end', picked));
       const row = el('div', 'row');
       row.append(startBtn, endBtn);
       showCard([el('div', 'place', r.name), el('div', 'sub', r.address), row]);
     }
 
-    function setPoint(which) {
-      if (!picked) return;
+    function setPoint(which, place) {
+      if (!place) return;
       if (pickedMarker) { pickedMarker.remove(); pickedMarker = null; }
-      const lngLat = [picked.lng, picked.lat];
+      picked = null;
+      const lngLat = [place.lng, place.lat];
       if (which === 'start') {
-        start = picked;
+        start = place;
         if (startMarker) startMarker.remove();
         startMarker = new maplibregl.Marker({ color: START_COLOUR }).setLngLat(lngLat).addTo(map);
       } else {
-        end = picked;
+        end = place;
         if (endMarker) endMarker.remove();
         endMarker = new maplibregl.Marker({ color: END_COLOUR }).setLngLat(lngLat).addTo(map);
       }
-      picked = null;
       if (start && end) {
         getRoute();
       } else {
+        if (!end) map.flyTo({ center: lngLat, zoom: 15 });
         showTrip();
       }
     }
+
+    // ---------- my location ----------
+    function useMyLocation() {
+      if (!('geolocation' in navigator)) {
+        showTrip([el('div', 'error', 'This browser cannot share your location.')]);
+        return;
+      }
+      showTrip([el('div', 'sub', 'Finding your location…')]);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          if (!inSingapore(lat, lng)) {
+            showTrip([el('div', 'error', 'Your location seems to be outside Singapore.')]);
+            return;
+          }
+          setPoint('start', { name: 'My location', address: '', lat, lng });
+        },
+        (err) => {
+          const msg = err.code === 1
+            ? 'Location is blocked. Allow location for this site in your browser settings, then try again.'
+            : 'Could not get your location. Check that location is on, then try again.';
+          showTrip([el('div', 'error', msg)]);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+      );
+    }
+
+    locateBtn.addEventListener('click', useMyLocation);
 
     // ---------- trip card ----------
     function tripLine(colour, label, place) {
@@ -272,18 +359,45 @@
       return line;
     }
 
+    function modeSwitch() {
+      const wrap = el('div', 'modes');
+      for (const key of Object.keys(MODES)) {
+        const b = el('button', key === mode ? 'on' : '', MODES[key].label);
+        b.type = 'button';
+        b.addEventListener('click', () => setMode(key));
+        wrap.appendChild(b);
+      }
+      return wrap;
+    }
+
+    function setMode(key) {
+      if (key === mode) return;
+      mode = key;
+      try { localStorage.setItem('mode', mode); } catch (e) { /* ignore */ }
+      if (map.getLayer('route-line')) map.setPaintProperty('route-line', 'line-color', MODES[mode].colour);
+      if (start && end) getRoute(); else showTrip();
+    }
+
     function showTrip(extra = []) {
       const trip = el('div', 'trip');
       trip.append(tripLine(START_COLOUR, 'From', start), tripLine(END_COLOUR, 'To', end));
-      const clear = el('button', 'btn-clear', 'Clear route');
-      clear.addEventListener('click', clearRoute);
+
       const row = el('div', 'row');
+      if (!start || start.name !== 'My location') {
+        const me = el('button', 'btn-me', 'Start from my location');
+        me.addEventListener('click', useMyLocation);
+        row.append(me);
+      }
+      const clear = el('button', 'btn-clear', 'Clear');
+      clear.addEventListener('click', clearRoute);
       row.append(clear);
-      showCard([trip, ...extra, row]);
+
+      showCard([modeSwitch(), trip, ...extra, row]);
     }
 
     function clearRoute() {
-      start = end = picked = null;
+      routeRequest++;
+      start = end = picked = lastRoute = null;
       [startMarker, endMarker, pickedMarker].forEach((m) => m && m.remove());
       startMarker = endMarker = pickedMarker = null;
       const src = map.getSource('route');
@@ -293,29 +407,34 @@
 
     // ---------- routing ----------
     async function getRoute() {
-      showTrip([el('div', 'sub', 'Finding a cycling route…')]);
-      const url = '/api/route?type=cycle'
+      const myRequest = ++routeRequest;
+      const m = MODES[mode];
+      showTrip([el('div', 'sub', 'Finding a route ' + m.words + '…')]);
+      const url = '/api/route?type=' + mode
         + '&start=' + start.lat + ',' + start.lng
         + '&end=' + end.lat + ',' + end.lng;
       try {
-        const resp = await fetch(url);
-        const data = await resp.json();
-        if (data.error) { showTrip([el('div', 'error', 'Route error: ' + data.error)]); return; }
+        const data = await getJson(url);
+        if (myRequest !== routeRequest) return; // user changed something meanwhile
 
+        lastRoute = data;
         const src = map.getSource('route');
         if (src) src.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: data.coordinates } });
 
         const bounds = data.coordinates.reduce(
           (b, c) => b.extend(c), new maplibregl.LngLatBounds(data.coordinates[0], data.coordinates[0]));
-        map.fitBounds(bounds, { padding: { top: 90, bottom: 220, left: 40, right: 40 }, maxZoom: 17 });
+        map.fitBounds(bounds, { padding: { top: 90, bottom: 260, left: 40, right: 40 }, maxZoom: 17 });
 
         const summary = el('div', 'summary');
         summary.append(
           document.createTextNode(formatDistance(data.distance_m)),
-          el('small', null, '  ·  ' + formatTime(data.time_s) + ' by bicycle'));
+          el('small', null, '  ·  ' + formatTime(data.time_s) + ' ' + m.words));
         showTrip([summary]);
       } catch (e) {
-        showTrip([el('div', 'error', 'Could not reach the route service. Check your connection.')]);
+        if (myRequest !== routeRequest) return;
+        const src = map.getSource('route');
+        if (src) src.setData(emptyLine());
+        showTrip([el('div', 'error', 'Route problem: ' + e.message)]);
       }
     }
   </script>
