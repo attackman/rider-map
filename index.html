@@ -268,9 +268,20 @@
       style: MAP_STYLES[theme],
       center: [103.8198, 1.3521],
       zoom: 11.2,
-      maxBounds: [[103.55, 1.12], [104.15, 1.50]]
+      maxBounds: [[103.55, 1.12], [104.15, 1.50]],
+      attributionControl: false
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+
+    // Map credits (required by the OpenStreetMap licence): shown at first, then folded into
+    // an (i) button after 5 seconds or when the map is moved. Tap (i) to see them again.
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+    function foldCredits() {
+      const credits = document.querySelector('.maplibregl-ctrl-attrib.maplibregl-compact-show');
+      if (credits) credits.classList.remove('maplibregl-compact-show');
+    }
+    setTimeout(foldCredits, 5000);
+    map.once('movestart', foldCredits);
 
     // ---------- shops, malls, food places and businesses on the map ----------
     // Uses the place data already inside the free map tiles (OpenStreetMap).
