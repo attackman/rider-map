@@ -107,6 +107,63 @@
       width: 44px; height: 46px; font-size: 24px; cursor: pointer;
     }
     .install-steps { flex-basis: 100%; margin: 2px 0 4px; padding-left: 22px; font-size: 15px; line-height: 1.5; }
+
+    /* Rain and heat alerts under the search bar */
+    .alerts:empty { display: none; }
+    .alert {
+      display: flex; align-items: center; gap: 6px; margin-top: 8px;
+      border-radius: 14px; padding: 6px 4px 6px 12px; box-shadow: var(--shadow);
+      font-size: 15px; line-height: 1.35; font-weight: 600;
+    }
+    .alert-rain { background: #e3eeff; color: #123a8f; }
+    .alert-heat { background: #fff0dc; color: #8a3a00; }
+    :root[data-theme="dark"] .alert-rain { background: #1c2f57; color: #d6e4ff; }
+    :root[data-theme="dark"] .alert-heat { background: #4a2a10; color: #ffe0bf; }
+    .alert-text { flex: 1; min-width: 0; cursor: pointer; padding: 4px 0; }
+    .alert-close {
+      border: 0; background: transparent; color: inherit; opacity: .75;
+      width: 44px; height: 44px; font-size: 22px; cursor: pointer; flex: none;
+    }
+
+    /* Saved and recent places in the search list */
+    .results li.section {
+      padding: 10px 16px 4px; min-height: 0; font-size: 13px; font-weight: 700;
+      color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: default; border-bottom: 0;
+    }
+    .results .mark { margin-right: 6px; }
+    .card .row .btn-star { flex: 0 0 64px; background: var(--chip); color: #e0a100; font-size: 26px; }
+
+    /* Layers and alerts sheet */
+    .sheet { position: fixed; inset: 0; z-index: 8; background: rgba(0,0,0,.35); }
+    .sheet[hidden] { display: none; }
+    .sheet-panel {
+      position: absolute; left: 0; right: 0; bottom: 0; max-height: 85vh; overflow-y: auto;
+      background: var(--panel); color: var(--text); border-radius: 20px 20px 0 0;
+      padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 16px); box-shadow: var(--shadow);
+    }
+    .sheet h2 { margin: 0 0 6px; font-size: 20px; }
+    .sheet h3 { margin: 16px 0 4px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .toggle {
+      display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px;
+      border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--text);
+      text-align: left; padding: 8px 0; cursor: pointer; font-size: 16px;
+    }
+    .toggle .swatch { width: 14px; height: 14px; border-radius: 50%; flex: none; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--line); }
+    .toggle .words { flex: 1; min-width: 0; }
+    .toggle .label { font-weight: 700; display: block; }
+    .toggle .hint { font-size: 13px; color: var(--muted); display: block; margin-top: 2px; }
+    .toggle .hint.bad { color: var(--error); }
+    .switch { flex: none; width: 50px; height: 30px; border-radius: 15px; background: var(--chip); position: relative; transition: background .2s; }
+    .switch::after {
+      content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%;
+      background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .2s;
+    }
+    .toggle[aria-checked="true"] .switch { background: #1b9e3e; }
+    .toggle[aria-checked="true"] .switch::after { transform: translateX(20px); }
+    .sheet-done {
+      width: 100%; margin-top: 16px; min-height: 54px; border: 0; border-radius: 14px;
+      background: #0b5fff; color: #ffffff; font-size: 17px; font-weight: 700; cursor: pointer;
+    }
     .results li { padding: 14px 16px; min-height: 28px; border-bottom: 1px solid var(--line); cursor: pointer; }
     .results li:last-child { border-bottom: 0; }
     .results li:active { background: var(--chip); }
@@ -225,12 +282,14 @@
 
   <div class="search">
     <div class="search-box">
-      <input id="q" type="search" placeholder="Search a place, block or postal code"
+      <input id="q" type="search" placeholder="Search places or postal code"
              autocomplete="off" enterkeyhint="search" aria-label="Search places" />
+      <button id="layers" class="icon-btn" type="button" aria-label="Map layers and alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 13 10 5 10-5"/><path d="m2 17.5 10 5 10-5" opacity=".5"/></svg></button>
       <button id="theme" class="icon-btn" type="button" aria-label="Change light or dark mode"></button>
       <button id="clear" class="icon-btn" type="button" aria-label="Clear search">×</button>
     </div>
     <div id="install" class="install" hidden></div>
+    <div id="alerts" class="alerts"></div>
     <ul id="results" class="results"></ul>
   </div>
 
@@ -238,6 +297,7 @@
 
   <div id="card" class="card" hidden></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="sheet" class="sheet" hidden></div>
 
   <script type="module">
     import * as maplibregl from 'https://unpkg.com/maplibre-gl@^6.15.0/dist/maplibre-gl.mjs';
@@ -408,28 +468,366 @@
       }
     }
 
-    // Tap a shop dot or name to get "Start here / Go here"
+    // ---------- extra map layers: rain, traffic, parking, toilets, water, shelters ----------
+    function loadJson(key, fallback) {
+      try { const v = JSON.parse(localStorage.getItem(key)); return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function saveJson(key, value) {
+      try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* storage blocked: ignore */ }
+    }
+
+    const LAYER_LIST = [
+      { id: 'rain',      label: 'Rain',               hint: 'Rain forecast for the next 2 hours, and where it is raining now', colour: '#2f6bff' },
+      { id: 'incidents', label: 'Traffic incidents',  hint: 'Accidents, breakdowns and road works (LTA)', colour: '#e11d48' },
+      { id: 'moto',      label: 'Motorcycle parking', hint: 'Free motorcycle lots right now. Zoom in to see them', colour: '#0f9d77' },
+      { id: 'cars',      label: 'Car parking',        hint: 'Free car lots right now. Zoom in to see them', colour: '#2563eb' },
+      { id: 'toilet',    label: 'Toilets',            hint: 'Zoom in to see them', colour: '#8b5e34' },
+      { id: 'water',     label: 'Drinking water',     hint: 'Zoom in to see them', colour: '#06b6d4' },
+      { id: 'shelter',   label: 'Shelters',           hint: 'Bus stop and other shelters, to wait out the rain', colour: '#64748b' }
+    ];
+    const FEED_FOR = { rain: 'weather', incidents: 'incidents', moto: 'carparks', cars: 'carparks',
+                       toilet: 'amenities', water: 'amenities', shelter: 'amenities' };
+    const shownLayers = Object.assign({}, loadJson('layers', {}));
+    const alertSettings = Object.assign({ rain: true, heat: true }, loadJson('alertSettings', {}));
+
+    // Live data, fetched only when a layer or alert needs it, and refreshed when it gets old
+    const feeds = {
+      weather:   { url: '/api/weather',             maxAge: 10 * 60 * 1000 },
+      incidents: { url: '/api/lta?kind=incidents',  maxAge: 3 * 60 * 1000 },
+      carparks:  { url: '/api/lta?kind=carparks',   maxAge: 3 * 60 * 1000 },
+      amenities: { url: '/api/amenities',           maxAge: 24 * 60 * 60 * 1000 }
+    };
+    for (const f of Object.values(feeds)) Object.assign(f, { data: null, at: 0, error: null, loading: null });
+
+    function loadFeed(name) {
+      const f = feeds[name];
+      if (f.loading) return f.loading;
+      if (f.data && Date.now() - f.at < f.maxAge) return Promise.resolve(f.data);
+      f.loading = (async () => {
+        try {
+          f.data = await getJson(f.url);
+          f.at = Date.now();
+          f.error = null;
+        } catch (e) {
+          f.error = e.message;
+          f.at = Date.now() - f.maxAge + 60 * 1000; // try again in a minute
+        }
+        f.loading = null;
+        updateOverlays();
+        return f.data;
+      })();
+      return f.loading;
+    }
+
+    function refreshShownLayers() {
+      for (const L of LAYER_LIST) if (shownLayers[L.id]) loadFeed(FEED_FOR[L.id]);
+    }
+
+    const pointFeature = (lng, lat, props) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: props });
+    const collection = (features) => ({ type: 'FeatureCollection', features });
+    const OVERLAY_SOURCES = ['ov-rain', 'ov-raining', 'ov-incidents', 'ov-moto', 'ov-cars', 'ov-amen'];
+
+    function overlayData(id) {
+      const w = feeds.weather.data, inc = feeds.incidents.data, cp = feeds.carparks.data, am = feeds.amenities.data;
+      const lots = (vehicle, t) => collection(cp && cp.carparks ? cp.carparks.filter((c) => c.vehicle === vehicle)
+        .map((c) => pointFeature(c.lng, c.lat, { t, name: c.name, lots: c.lots, agency: c.agency })) : []);
+      switch (id) {
+        case 'ov-rain': return collection(w && w.forecast ? w.forecast.areas.filter((a) => a.rain)
+          .map((a) => pointFeature(a.lng, a.lat, { t: 'rain', name: a.name, forecast: a.forecast, until: w.forecast.validUntil || '' })) : []);
+        case 'ov-raining': return collection(w && w.raining ? w.raining
+          .map((r) => pointFeature(r.lng, r.lat, { t: 'raining', name: r.name, mm: r.mm })) : []);
+        case 'ov-incidents': return collection(inc && inc.incidents ? inc.incidents
+          .map((i) => pointFeature(i.lng, i.lat, { t: 'incident', type: i.type, message: i.message })) : []);
+        case 'ov-moto': return lots('motorcycle', 'moto');
+        case 'ov-cars': return lots('car', 'car');
+        case 'ov-amen': return collection(am && am.places ? am.places
+          .map((p) => pointFeature(p.lng, p.lat, { t: p.kind, name: p.name, busStop: !!p.busStop,
+            fee: p.fee === null || p.fee === undefined ? '' : (p.fee ? 'yes' : 'no'), wheelchair: !!p.wheelchair })) : []);
+      }
+      return collection([]);
+    }
+
+    const GROUP_LAYERS = {
+      rain: ['ov-rain-area', 'ov-rain-name', 'ov-raining-dot', 'ov-raining-mm'],
+      incidents: ['ov-incidents-dot', 'ov-incidents-name'],
+      moto: ['ov-moto-dot', 'ov-moto-num'],
+      cars: ['ov-cars-dot', 'ov-cars-num']
+    };
+    const OVERLAY_TAP = ['ov-incidents-dot', 'ov-moto-dot', 'ov-cars-dot', 'ov-amen-dot', 'ov-raining-dot', 'ov-rain-area'];
+    const RAIN_COLOUR = ['case', ['in', 'Thunder', ['get', 'forecast']], '#7b4dff',
+                         ['in', 'Shower', ['get', 'forecast']], '#2f6bff', '#4fa3ff'];
+
+    function addOverlayLayers() {
+      for (const id of OVERLAY_SOURCES) map.addSource(id, { type: 'geojson', data: overlayData(id) });
+      const edge = theme === 'dark' ? '#1b1f26' : '#ffffff';
+      const labelPaint = { 'text-color': theme === 'dark' ? '#f4f6fa' : '#1f2937',
+                           'text-halo-color': theme === 'dark' ? '#0e1116' : '#ffffff', 'text-halo-width': 1.4 };
+      const font = ['Noto Sans Regular'];
+
+      // Rain: a soft circle over each forecast area where rain is expected, and live rain gauges
+      map.addLayer({ id: 'ov-rain-area', type: 'circle', source: 'ov-rain', paint: {
+        'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 10, 14, 15, 460],
+        'circle-color': RAIN_COLOUR, 'circle-opacity': 0.22,
+        'circle-stroke-color': RAIN_COLOUR, 'circle-stroke-width': 1.5, 'circle-stroke-opacity': 0.6 } });
+      map.addLayer({ id: 'ov-rain-name', type: 'symbol', source: 'ov-rain',
+        layout: { 'text-field': ['get', 'forecast'], 'text-font': font, 'text-size': 13, 'text-max-width': 8 },
+        paint: labelPaint });
+      map.addLayer({ id: 'ov-raining-dot', type: 'circle', source: 'ov-raining', paint: {
+        'circle-radius': 6, 'circle-color': '#1d4ed8', 'circle-stroke-width': 2, 'circle-stroke-color': edge } });
+      map.addLayer({ id: 'ov-raining-mm', type: 'symbol', source: 'ov-raining', minzoom: 12,
+        layout: { 'text-field': ['concat', ['to-string', ['get', 'mm']], ' mm'], 'text-font': font, 'text-size': 11,
+                  'text-anchor': 'top', 'text-offset': [0, 0.9] },
+        paint: labelPaint });
+
+      // Traffic incidents
+      map.addLayer({ id: 'ov-incidents-dot', type: 'circle', source: 'ov-incidents', paint: {
+        'circle-radius': 9, 'circle-color': '#e11d48', 'circle-stroke-width': 2.5, 'circle-stroke-color': edge } });
+      map.addLayer({ id: 'ov-incidents-name', type: 'symbol', source: 'ov-incidents', minzoom: 12,
+        layout: { 'text-field': ['get', 'type'], 'text-font': font, 'text-size': 12, 'text-anchor': 'top', 'text-offset': [0, 1.1] },
+        paint: labelPaint });
+
+      // Parking: a numbered dot per car park (motorcycles on the left, cars on the right)
+      for (const [src, colour, shift] of [['ov-moto', '#0f9d77', -12], ['ov-cars', '#2563eb', 12]]) {
+        map.addLayer({ id: src + '-dot', type: 'circle', source: src, minzoom: 12, paint: {
+          'circle-radius': 11, 'circle-color': ['case', ['>', ['get', 'lots'], 0], colour, '#9aa3ad'],
+          'circle-stroke-width': 2, 'circle-stroke-color': edge, 'circle-translate': [shift, 0] } });
+        map.addLayer({ id: src + '-num', type: 'symbol', source: src, minzoom: 12,
+          layout: { 'text-field': ['to-string', ['get', 'lots']], 'text-font': font, 'text-size': 11,
+                    'text-allow-overlap': true, 'text-ignore-placement': true },
+          paint: { 'text-color': '#ffffff', 'text-translate': [shift, 0] } });
+      }
+
+      // Toilets, drinking water, shelters
+      map.addLayer({ id: 'ov-amen-dot', type: 'circle', source: 'ov-amen', minzoom: 14, paint: {
+        'circle-radius': 6.5,
+        'circle-color': ['match', ['get', 't'], 'toilet', '#8b5e34', 'water', '#06b6d4', '#64748b'],
+        'circle-stroke-width': 1.5, 'circle-stroke-color': edge } });
+    }
+
+    function applyOverlayVisibility() {
+      for (const [group, ids] of Object.entries(GROUP_LAYERS)) {
+        for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', shownLayers[group] ? 'visible' : 'none');
+      }
+      const kinds = ['toilet', 'water', 'shelter'].filter((k) => shownLayers[k]);
+      if (map.getLayer('ov-amen-dot')) {
+        map.setLayoutProperty('ov-amen-dot', 'visibility', kinds.length ? 'visible' : 'none');
+        map.setFilter('ov-amen-dot', ['in', ['get', 't'], ['literal', kinds.length ? kinds : ['none']]]);
+      }
+    }
+
+    function updateOverlays() {
+      for (const id of OVERLAY_SOURCES) {
+        const s = map.getSource(id);
+        if (s) s.setData(overlayData(id));
+      }
+      applyOverlayVisibility();
+      if (!sheet.hidden) renderSheet();
+    }
+
+    // What a tapped dot is, in words, for the card
+    function describeFeature(f) {
+      const p = f.properties || {};
+      const layerId = (f.layer && f.layer.id) || '';
+      if (!layerId.startsWith('ov-')) {
+        const name = p['name:en'] || p.name_en || p.name;
+        return name ? { name, address: poiCategory(p) } : null;
+      }
+      const lotWords = (n, what) => n + ' ' + what + ' lot' + (Number(n) === 1 ? '' : 's') + ' free now' + (p.agency ? ' · ' + p.agency : '');
+      switch (p.t) {
+        case 'incident': return { name: p.type, address: p.message, noRecent: true };
+        case 'moto': return { name: p.name, address: lotWords(p.lots, 'motorcycle'), noRecent: true };
+        case 'car': return { name: p.name, address: lotWords(p.lots, 'car'), noRecent: true };
+        case 'toilet': return { name: p.name || 'Toilet', noRecent: true,
+          address: ['Toilet', p.fee === 'yes' ? 'Paid' : p.fee === 'no' ? 'Free' : '', p.wheelchair ? 'Wheelchair accessible' : ''].filter(Boolean).join(' · ') };
+        case 'water': return { name: p.name || 'Drinking water', address: 'Drinking water tap or fountain', noRecent: true };
+        case 'shelter': return { name: p.name || (p.busStop ? 'Bus stop shelter' : 'Shelter'), noRecent: true,
+          address: p.busStop ? 'Bus stop shelter, cover from rain' : 'Covered shelter, cover from rain' };
+        case 'raining': return { name: p.name, address: p.mm + ' mm of rain in the last 5 minutes', info: true };
+        case 'rain': return { name: p.name, address: p.forecast + (p.until ? ' until ' + clockText(p.until) : ' in the next 2 hours'), info: true };
+      }
+      return null;
+    }
+
+    function clockText(iso) {
+      const d = new Date(iso);
+      return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    // Tap a shop, car park, toilet, incident or rain area for details and "Start here / Go here"
     map.on('click', (e) => {
-      const layers = POI_LAYERS.filter((id) => map.getLayer(id));
+      if (list.dataset.quick) { list.innerHTML = ''; list.dataset.quick = ''; }
+      const layers = [...POI_LAYERS, ...OVERLAY_TAP].filter((id) => map.getLayer(id));
       if (!layers.length) return;
       const p = e.point;
       const found = map.queryRenderedFeatures([[p.x - 20, p.y - 20], [p.x + 20, p.y + 20]], { layers });
       let best = null, bestDistance = Infinity;
       for (const f of found) {
-        const props = f.properties || {};
-        const name = props['name:en'] || props.name_en || props.name;
-        if (!name || !f.geometry) continue;
+        const place = describeFeature(f);
+        if (!place || !f.geometry) continue;
         const c = f.geometry.type === 'MultiPoint' ? f.geometry.coordinates[0] : f.geometry.coordinates;
         const px = map.project(c);
-        const d = Math.hypot(px.x - p.x, px.y - p.y);
-        if (d < bestDistance) { bestDistance = d; best = { name, address: poiCategory(props), lng: c[0], lat: c[1] }; }
+        let d = Math.hypot(px.x - p.x, px.y - p.y);
+        if (f.layer && f.layer.id === 'ov-rain-area') d += 1000; // big rain circles lose to anything closer
+        if (d < bestDistance) { bestDistance = d; best = Object.assign(place, { lng: c[0], lat: c[1] }); }
       }
       if (best) choose(best);
     });
 
+    // ---------- layers and alerts menu ----------
+    const sheet = document.getElementById('sheet');
+
+    function toggleRow(label, hint, checked, colour, onTap, bad) {
+      const b = el('button', 'toggle');
+      b.type = 'button';
+      b.setAttribute('role', 'switch');
+      b.setAttribute('aria-checked', String(!!checked));
+      if (colour) { const sw = el('span', 'swatch'); sw.style.background = colour; b.append(sw); }
+      const words = el('span', 'words');
+      words.append(el('span', 'label', label));
+      if (hint) words.append(el('span', 'hint' + (bad ? ' bad' : ''), hint));
+      b.append(words, el('span', 'switch'));
+      b.addEventListener('click', onTap);
+      return b;
+    }
+
+    function renderSheet() {
+      const panel = el('div', 'sheet-panel');
+      panel.setAttribute('role', 'dialog');
+      panel.setAttribute('aria-label', 'Map layers and alerts');
+      panel.append(el('h2', null, 'Map layers'));
+      for (const L of LAYER_LIST) {
+        const f = feeds[FEED_FOR[L.id]];
+        const on = !!shownLayers[L.id];
+        const bad = on && !!f.error;
+        const hint = bad ? f.error : (on && f.loading ? 'Loading…' : L.hint);
+        panel.append(toggleRow(L.label, hint, on, L.colour, () => setLayer(L.id, !on), bad));
+      }
+      panel.append(el('h3', null, 'Alerts'));
+      panel.append(toggleRow('Rain alerts', 'When rain is forecast near you in the next 2 hours', alertSettings.rain, null, () => setAlert('rain')));
+      panel.append(toggleRow('Heat alerts', 'A reminder to drink water when heat stress is high', alertSettings.heat, null, () => setAlert('heat')));
+      const done = el('button', 'sheet-done', 'Done');
+      done.type = 'button';
+      done.addEventListener('click', closeSheet);
+      panel.append(done);
+      sheet.innerHTML = '';
+      sheet.append(panel);
+    }
+
+    function openSheet() { renderSheet(); sheet.hidden = false; }
+    function closeSheet() { sheet.hidden = true; sheet.innerHTML = ''; }
+    sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
+    document.getElementById('layers').addEventListener('click', openSheet);
+
+    function setLayer(id, on) {
+      shownLayers[id] = on;
+      saveJson('layers', shownLayers);
+      if (on) loadFeed(FEED_FOR[id]);
+      applyOverlayVisibility();
+      if (!sheet.hidden) renderSheet();
+    }
+
+    function setAlert(kind) {
+      alertSettings[kind] = !alertSettings[kind];
+      saveJson('alertSettings', alertSettings);
+      checkAlerts();
+      if (!sheet.hidden) renderSheet();
+    }
+
+    // ---------- rain and heat alerts ----------
+    const alertsBox = document.getElementById('alerts');
+    const dismissedAlerts = new Set(loadJson('dismissedAlerts', []));
+    const spokenAlerts = new Set();
+
+    // The rider's position if known, otherwise the middle of the map
+    function whereAmI() {
+      if (lastFix) return { lat: lastFix.lat, lng: lastFix.lng };
+      if (start && start.name === 'My location') return { lat: start.lat, lng: start.lng };
+      const c = map.getCenter();
+      return { lat: c.lat, lng: c.lng };
+    }
+
+    function nearestTo(items, here) {
+      let best = null;
+      for (const item of items) {
+        const d = metresBetween([item.lng, item.lat], [here.lng, here.lat]);
+        if (!best || d < best.dist) best = { item, dist: d };
+      }
+      return best;
+    }
+
+    async function checkAlerts() {
+      if (!alertSettings.rain && !alertSettings.heat) { renderAlerts([]); return; }
+      const w = await loadFeed('weather');
+      const found = [];
+      if (w) {
+        const here = whereAmI();
+        if (alertSettings.rain && w.forecast && w.forecast.areas.length) {
+          const n = nearestTo(w.forecast.areas, here);
+          if (n && n.item.rain && n.dist < 8000) {
+            const until = clockText(w.forecast.validUntil);
+            found.push({
+              kind: 'rain', area: n.item,
+              key: 'rain|' + n.item.name + '|' + n.item.forecast + '|' + w.forecast.validUntil,
+              text: n.item.forecast + ' expected around ' + n.item.name + (until ? ' until ' + until : ' in the next 2 hours'),
+              speech: n.item.forecast + ' expected around ' + n.item.name + ' in the next 2 hours.'
+            });
+          }
+        }
+        if (alertSettings.heat && w.heat && w.heat.length) {
+          const n = nearestTo(w.heat, here);
+          if (n && n.dist < 10000 && /high/i.test(n.item.level)) {
+            found.push({
+              kind: 'heat',
+              key: 'heat|' + n.item.name + '|' + n.item.level + '|' + new Date().toDateString(),
+              text: 'High heat stress around ' + n.item.name + (n.item.wbgt ? ' (' + n.item.wbgt + '°C WBGT)' : '')
+                + '. Drink water and rest in the shade.',
+              speech: 'High heat stress. Remember to drink water.'
+            });
+          }
+        }
+      }
+      renderAlerts(found.filter((a) => !dismissedAlerts.has(a.key)));
+    }
+
+    function renderAlerts(items) {
+      alertsBox.innerHTML = '';
+      for (const a of items) {
+        const box = el('div', 'alert alert-' + a.kind);
+        box.setAttribute('role', 'status');
+        const text = el('div', 'alert-text', (a.kind === 'rain' ? '🌧 ' : '🥵 ') + a.text);
+        if (a.kind === 'rain') {
+          // Tap the alert to see the rain on the map
+          text.addEventListener('click', () => {
+            if (!shownLayers.rain) setLayer('rain', true);
+            map.flyTo({ center: [a.area.lng, a.area.lat], zoom: 12 });
+          });
+        }
+        const x = el('button', 'alert-close', '×');
+        x.type = 'button';
+        x.setAttribute('aria-label', 'Dismiss alert');
+        x.addEventListener('click', () => {
+          dismissedAlerts.add(a.key);
+          saveJson('dismissedAlerts', [...dismissedAlerts].slice(-30));
+          box.remove();
+        });
+        box.append(text, x);
+        alertsBox.append(box);
+        if (riding && !spokenAlerts.has(a.key)) { spokenAlerts.add(a.key); speak(a.speech); }
+      }
+    }
+
+    // Keep layers and alerts fresh while the app is open
+    setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      refreshShownLayers();
+      checkAlerts();
+    }, 60 * 1000);
+    setTimeout(() => { refreshShownLayers(); checkAlerts(); }, 1500);
+
     // Runs on first load and again after every light/dark switch
     map.on('style.load', () => {
       try { addShopLayers(); } catch (e) { /* map still works without the shop layer */ }
+      try { addOverlayLayers(); applyOverlayVisibility(); } catch (e) { /* map still works without these layers */ }
       map.addSource('route', { type: 'geojson', data: routeFeature() });
       map.addLayer({ id: 'route-casing', type: 'line', source: 'route',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -617,11 +1015,13 @@
     // ---------- search ----------
     function showMessage(text) {
       list.innerHTML = '';
+      list.dataset.quick = '';
       list.appendChild(el('li', 'msg', text));
     }
 
     function showResults(results) {
       list.innerHTML = '';
+      list.dataset.quick = '';
       if (!results.length) { showMessage('No places found'); return; }
       for (const r of results) {
         const li = el('li');
@@ -652,7 +1052,8 @@
     input.addEventListener('input', () => {
       clearTimeout(timer);
       const q = input.value.trim();
-      if (q.length < 2) { list.innerHTML = ''; lastQuery = ''; return; }
+      if (q.length === 0) { lastQuery = ''; showQuickList(); return; }
+      if (q.length < 2) { list.innerHTML = ''; list.dataset.quick = ''; lastQuery = ''; return; }
       timer = setTimeout(() => search(q), 400);
     });
 
@@ -667,16 +1068,31 @@
     clearBtn.addEventListener('click', () => {
       input.value = '';
       list.innerHTML = '';
+      list.dataset.quick = '';
       lastQuery = '';
       input.focus();
+      showQuickList();
     });
 
     // ---------- choosing a place ----------
     function choose(r) {
       list.innerHTML = '';
+      list.dataset.quick = '';
       input.value = '';
       input.blur(); // hide the phone keyboard
+
+      // Information only (e.g. a rain area): show it, with no route buttons
+      if (r.info) {
+        const ok = el('button', 'btn-clear', 'Close');
+        ok.addEventListener('click', () => { if (riding) showRideCard(); else if (start || end) showTrip(); else hideCard(); });
+        const row = el('div', 'row');
+        row.append(ok);
+        showCard([el('div', 'place', r.name), el('div', 'sub', r.address), row]);
+        return;
+      }
+
       picked = r;
+      if (!r.noRecent) remember(r);
       if (pickedMarker) pickedMarker.remove();
       pickedMarker = new maplibregl.Marker({ color: '#0b5fff' }).setLngLat([r.lng, r.lat]).addTo(map);
       map.flyTo({ center: [r.lng, r.lat], zoom: Math.max(map.getZoom(), 16) });
@@ -687,8 +1103,76 @@
       endBtn.addEventListener('click', () => setPoint('end', picked));
       const row = el('div', 'row');
       row.append(startBtn, endBtn);
+      if (!r.noRecent) {
+        const star = el('button', 'btn-star', isSaved(r) ? '★' : '☆');
+        star.type = 'button';
+        star.setAttribute('aria-label', isSaved(r) ? 'Remove from saved places' : 'Save this place');
+        star.addEventListener('click', () => {
+          const nowSaved = toggleSaved(r);
+          star.textContent = nowSaved ? '★' : '☆';
+          star.setAttribute('aria-label', nowSaved ? 'Remove from saved places' : 'Save this place');
+          showToast(nowSaved ? 'Saved' : 'Removed from saved');
+        });
+        row.append(star);
+      }
       showCard([el('div', 'place', r.name), el('div', 'sub', r.address), row]);
     }
+
+    // ---------- saved and recent places (kept on this phone only) ----------
+    let savedPlaces = Array.isArray(loadJson('saved', [])) ? loadJson('saved', []) : [];
+    let recentPlaces = Array.isArray(loadJson('recent', [])) ? loadJson('recent', []) : [];
+
+    function samePlace(a, b) {
+      return a.name === b.name && Math.abs(a.lat - b.lat) < 1e-4 && Math.abs(a.lng - b.lng) < 1e-4;
+    }
+    function slim(p) {
+      return { name: p.name, address: p.address || '', category: p.category || null, lat: p.lat, lng: p.lng };
+    }
+    function isSaved(p) { return savedPlaces.some((s) => samePlace(s, p)); }
+
+    function toggleSaved(p) {
+      if (isSaved(p)) {
+        savedPlaces = savedPlaces.filter((s) => !samePlace(s, p));
+      } else {
+        savedPlaces = [slim(p), ...savedPlaces].slice(0, 30);
+      }
+      saveJson('saved', savedPlaces);
+      return isSaved(p);
+    }
+
+    function remember(p) {
+      if (!p || p.name === 'My location') return;
+      recentPlaces = [slim(p), ...recentPlaces.filter((r) => !samePlace(r, p))].slice(0, 10);
+      saveJson('recent', recentPlaces);
+    }
+
+    // Tapping the empty search box shows saved places, then recent ones
+    function showQuickList() {
+      if (input.value.trim()) return;
+      list.innerHTML = '';
+      const addGroup = (title, items, mark) => {
+        if (!items.length) return;
+        list.appendChild(el('li', 'section', title));
+        for (const r of items) {
+          const li = el('li');
+          const name = el('div', 'name');
+          name.append(el('span', 'mark', mark), document.createTextNode(r.name));
+          li.append(name, el('div', 'addr', r.address || ''));
+          li.addEventListener('click', () => choose(r));
+          list.appendChild(li);
+        }
+      };
+      addGroup('Saved', savedPlaces, '★');
+      addGroup('Recent', recentPlaces.filter((r) => !isSaved(r)), '🕘');
+      list.dataset.quick = list.childElementCount ? '1' : '';
+    }
+
+    input.addEventListener('focus', showQuickList);
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (list.dataset.quick && document.activeElement !== input) { list.innerHTML = ''; list.dataset.quick = ''; }
+      }, 300);
+    });
 
     function setPoint(which, place) {
       if (!place) return;

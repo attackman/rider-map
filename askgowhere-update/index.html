@@ -1,0 +1,1867 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b5fff" />
+  <title>AskGoWhere</title>
+
+  <!-- Install as an app -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="AskGoWhere" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@^6.15.0/dist/maplibre-gl.css" />
+  <style>
+    /* ---------- colours: light (default) and dark ---------- */
+    :root {
+      --panel: #ffffff;
+      --text: #111111;
+      --muted: #555555;
+      --line: #e6e8ec;
+      --chip: #eef1f5;
+      --chip-text: #333333;
+      --accent: #0b5fff;
+      --start-bg: #e5f4e4; --start-text: #1b6b1b;
+      --end-bg: #fbebeb;   --end-text: #a11d1d;
+      --me-bg: #e7f1fb;    --me-text: #0b5fff;
+      --error: #a11d1d;
+      --shadow: 0 2px 12px rgba(0,0,0,.28);
+      --map-bg: #f2efe9;
+      --seg-on: #ffffff;
+      --edge: transparent;
+    }
+    :root[data-theme="dark"] {
+      --panel: #1b1f26;
+      --text: #ffffff;
+      --muted: #dde2ea;
+      --line: #2c323c;
+      --chip: #2a303a;
+      --chip-text: #ffffff;
+      --accent: #9cc2ff;
+      --start-bg: #1d3a24; --start-text: #b4f0c2;
+      --end-bg: #3d1f22;   --end-text: #ffc2c2;
+      --me-bg: #1f3050;    --me-text: #c4dbff;
+      --error: #ffc2c2;
+      --shadow: 0 2px 14px rgba(0,0,0,.6);
+      --map-bg: #1a1d21;
+      --seg-on: #3d4553;
+      --edge: #343b47;
+    }
+
+    html, body { margin: 0; height: 100%; background: var(--map-bg); }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text); }
+    #map { position: fixed; inset: 0; background: var(--map-bg); }
+    button { font-family: inherit; -webkit-tap-highlight-color: transparent; }
+
+    /* ---------- search bar ---------- */
+    .search {
+      position: fixed; left: 12px; right: 12px;
+      top: calc(env(safe-area-inset-top, 0px) + 12px);
+      z-index: 5;
+    }
+    .search-box {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--panel); border-radius: 14px;
+      padding: 5px 5px 5px 16px; box-shadow: var(--shadow);
+    }
+    .search-box input {
+      flex: 1; min-width: 0; border: 0; outline: none;
+      font-size: 17px; /* 16px+ stops iPhone zooming in */
+      padding: 12px 0; background: transparent; color: var(--text);
+    }
+    .search-box input::placeholder { color: var(--muted); }
+    .search-box input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+    .icon-btn {
+      flex: none; border: 0; background: var(--chip); color: var(--chip-text);
+      width: 48px; height: 48px; border-radius: 12px;
+      font-size: 22px; line-height: 1; cursor: pointer;
+    }
+    .results {
+      list-style: none; margin: 8px 0 0; padding: 0;
+      background: var(--panel); border-radius: 14px; box-shadow: var(--shadow);
+      max-height: 55vh; overflow-y: auto;
+    }
+    .results:empty { display: none; }
+
+    /* "Install app" banner under the search bar */
+    .install {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+      background: var(--panel); color: var(--text); border-radius: 14px;
+      padding: 8px 6px 8px 14px; box-shadow: var(--shadow); border: 1px solid var(--edge);
+    }
+    .install[hidden] { display: none; }
+    .install-text { flex: 1; min-width: 0; font-size: 15px; line-height: 1.35; }
+    .install-text strong { display: block; font-size: 16px; }
+    .install-text span { color: var(--muted); font-size: 14px; }
+    .install-btn {
+      border: 0; border-radius: 12px; min-height: 46px; padding: 0 18px;
+      background: #0b5fff; color: #ffffff; font-size: 16px; font-weight: 700; cursor: pointer;
+    }
+    .install-close {
+      border: 0; background: transparent; color: var(--muted);
+      width: 44px; height: 46px; font-size: 24px; cursor: pointer;
+    }
+    .install-steps { flex-basis: 100%; margin: 2px 0 4px; padding-left: 22px; font-size: 15px; line-height: 1.5; }
+
+    /* Rain and heat alerts under the search bar */
+    .alerts:empty { display: none; }
+    .alert {
+      display: flex; align-items: center; gap: 6px; margin-top: 8px;
+      border-radius: 14px; padding: 6px 4px 6px 12px; box-shadow: var(--shadow);
+      font-size: 15px; line-height: 1.35; font-weight: 600;
+    }
+    .alert-rain { background: #e3eeff; color: #123a8f; }
+    .alert-heat { background: #fff0dc; color: #8a3a00; }
+    :root[data-theme="dark"] .alert-rain { background: #1c2f57; color: #d6e4ff; }
+    :root[data-theme="dark"] .alert-heat { background: #4a2a10; color: #ffe0bf; }
+    .alert-text { flex: 1; min-width: 0; cursor: pointer; padding: 4px 0; }
+    .alert-close {
+      border: 0; background: transparent; color: inherit; opacity: .75;
+      width: 44px; height: 44px; font-size: 22px; cursor: pointer; flex: none;
+    }
+
+    /* Saved and recent places in the search list */
+    .results li.section {
+      padding: 10px 16px 4px; min-height: 0; font-size: 13px; font-weight: 700;
+      color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: default; border-bottom: 0;
+    }
+    .results .mark { margin-right: 6px; }
+    .card .row .btn-star { flex: 0 0 64px; background: var(--chip); color: #e0a100; font-size: 26px; }
+
+    /* Layers and alerts sheet */
+    .sheet { position: fixed; inset: 0; z-index: 8; background: rgba(0,0,0,.35); }
+    .sheet[hidden] { display: none; }
+    .sheet-panel {
+      position: absolute; left: 0; right: 0; bottom: 0; max-height: 85vh; overflow-y: auto;
+      background: var(--panel); color: var(--text); border-radius: 20px 20px 0 0;
+      padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 16px); box-shadow: var(--shadow);
+    }
+    .sheet h2 { margin: 0 0 6px; font-size: 20px; }
+    .sheet h3 { margin: 16px 0 4px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .toggle {
+      display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px;
+      border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--text);
+      text-align: left; padding: 8px 0; cursor: pointer; font-size: 16px;
+    }
+    .toggle .swatch { width: 14px; height: 14px; border-radius: 50%; flex: none; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--line); }
+    .toggle .words { flex: 1; min-width: 0; }
+    .toggle .label { font-weight: 700; display: block; }
+    .toggle .hint { font-size: 13px; color: var(--muted); display: block; margin-top: 2px; }
+    .toggle .hint.bad { color: var(--error); }
+    .switch { flex: none; width: 50px; height: 30px; border-radius: 15px; background: var(--chip); position: relative; transition: background .2s; }
+    .switch::after {
+      content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%;
+      background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .2s;
+    }
+    .toggle[aria-checked="true"] .switch { background: #1b9e3e; }
+    .toggle[aria-checked="true"] .switch::after { transform: translateX(20px); }
+    .sheet-done {
+      width: 100%; margin-top: 16px; min-height: 54px; border: 0; border-radius: 14px;
+      background: #0b5fff; color: #ffffff; font-size: 17px; font-weight: 700; cursor: pointer;
+    }
+    .results li { padding: 14px 16px; min-height: 28px; border-bottom: 1px solid var(--line); cursor: pointer; }
+    .results li:last-child { border-bottom: 0; }
+    .results li:active { background: var(--chip); }
+    .results .name { font-weight: 600; font-size: 16px; color: var(--text); }
+    .results .addr { font-size: 14px; color: var(--muted); margin-top: 3px; }
+    .results .msg { color: var(--muted); cursor: default; }
+    .results .tag {
+      display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 10px;
+      background: var(--chip); color: var(--chip-text); font-size: 12px; font-weight: 600;
+    }
+
+    /* ---------- floating "start from my location" ---------- */
+    .locate {
+      position: fixed; left: 12px;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+      z-index: 4; border: 0; border-radius: 28px;
+      background: var(--panel); color: var(--accent);
+      min-height: 56px; padding: 0 20px; font-size: 17px; font-weight: 700;
+      box-shadow: var(--shadow); cursor: pointer;
+    }
+    .locate[hidden] { display: none; }
+
+    /* ---------- bottom card ---------- */
+    .card {
+      position: fixed; left: 10px; right: 10px;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+      background: var(--panel); color: var(--text);
+      border-radius: 18px; padding: 14px; box-shadow: var(--shadow); z-index: 5;
+      border: 1px solid var(--edge);
+    }
+    .card[hidden] { display: none; }
+    .card .place { font-weight: 700; font-size: 18px; }
+    .card .sub { font-size: 15px; color: var(--muted); margin-top: 3px; }
+    .card .row { display: flex; gap: 10px; margin-top: 12px; }
+    .card .row button {
+      flex: 1; border: 0; border-radius: 14px; min-height: 56px; padding: 0 10px;
+      font-size: 17px; font-weight: 700; cursor: pointer;
+    }
+    .btn-start { background: var(--start-bg); color: var(--start-text); }
+    .btn-end   { background: var(--end-bg);   color: var(--end-text); }
+    .btn-clear { background: var(--chip);     color: var(--chip-text); flex: 0 0 34% !important; }
+    .btn-clear:only-child { flex: 1 !important; }
+    .icon-btn svg { width: 24px; height: 24px; display: block; margin: auto; }
+    .btn-me    { background: var(--me-bg);    color: var(--me-text); }
+    button:active { filter: brightness(.92); }
+
+    /* Cycle / Drive / Walk switch */
+    .modes {
+      display: flex; background: var(--chip); border-radius: 14px; padding: 4px; gap: 4px;
+      margin-bottom: 12px;
+    }
+    .modes button {
+      flex: 1; border: 0; border-radius: 11px; min-height: 48px;
+      font-size: 16px; font-weight: 700; background: transparent; color: var(--muted); cursor: pointer;
+    }
+    .modes button.on { background: var(--seg-on); color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+
+    .trip { font-size: 16px; line-height: 1.6; }
+    .trip .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
+    .summary { font-size: 28px; font-weight: 800; margin-top: 8px; }
+    .summary small { font-size: 16px; font-weight: 600; color: var(--muted); }
+    .wake { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .wake:empty { display: none; }
+    .error { color: var(--error); font-size: 15px; margin-top: 8px; }
+
+    /* Ride buttons */
+    .btn-go       { background: #1b9e3e; color: #ffffff; }
+    .btn-end-ride { background: var(--end-bg); color: var(--end-text); }
+
+    .card .row .btn-voice { flex: 0 0 64px; background: var(--chip); color: var(--chip-text); font-size: 24px; }
+
+    /* Next-turn banner while riding */
+    .next {
+      display: flex; align-items: center; gap: 12px;
+      background: #0b5fff; color: #ffffff; border-radius: 14px; padding: 10px 14px; margin-bottom: 12px;
+    }
+    :root[data-theme="dark"] .next { background: #2f5fcf; }
+    .next-icon { flex: none; width: 44px; height: 44px; transition: transform .3s; }
+    .next-icon svg { width: 44px; height: 44px; display: block; }
+    .next-what { font-size: 19px; font-weight: 800; line-height: 1.25; }
+    .next-dist { font-size: 16px; font-weight: 600; opacity: .92; margin-top: 2px; }
+
+    /* The rider's moving dot with a direction arrow */
+    .me { width: 30px; height: 30px; position: relative; }
+    .me-dot {
+      position: absolute; inset: 6px; border-radius: 50%;
+      background: #0b5fff; border: 3px solid #ffffff; box-sizing: border-box;
+      box-shadow: 0 0 0 6px rgba(11,95,255,.22), 0 1px 4px rgba(0,0,0,.4);
+    }
+    .me-rot { position: absolute; inset: 0; transition: transform .4s; }
+    .me-arrow {
+      position: absolute; left: 50%; top: -9px; margin-left: -7px;
+      width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent;
+      border-bottom: 11px solid #0b5fff;
+    }
+
+    /* Short message at the top, e.g. "Dark mode" */
+    .toast {
+      position: fixed; left: 50%; transform: translateX(-50%);
+      top: calc(env(safe-area-inset-top, 0px) + 80px);
+      background: var(--text); color: var(--panel);
+      padding: 10px 16px; border-radius: 20px; font-size: 15px; font-weight: 600;
+      z-index: 6; opacity: 0; transition: opacity .2s; pointer-events: none;
+    }
+    .toast.show { opacity: .94; }
+
+    /* Bigger +/- map buttons, readable in dark mode */
+    .maplibregl-ctrl-group button { width: 44px !important; height: 44px !important; }
+    :root[data-theme="dark"] .maplibregl-ctrl-group { filter: invert(.9) hue-rotate(180deg); }
+    :root[data-theme="dark"] .maplibregl-ctrl-attrib { background: rgba(27,31,38,.8); color: #ccc; }
+    :root[data-theme="dark"] .maplibregl-ctrl-attrib a { color: #ccc; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="search">
+    <div class="search-box">
+      <input id="q" type="search" placeholder="Search places or postal code"
+             autocomplete="off" enterkeyhint="search" aria-label="Search places" />
+      <button id="layers" class="icon-btn" type="button" aria-label="Map layers and alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 13 10 5 10-5"/><path d="m2 17.5 10 5 10-5" opacity=".5"/></svg></button>
+      <button id="theme" class="icon-btn" type="button" aria-label="Change light or dark mode"></button>
+      <button id="clear" class="icon-btn" type="button" aria-label="Clear search">×</button>
+    </div>
+    <div id="install" class="install" hidden></div>
+    <div id="alerts" class="alerts"></div>
+    <ul id="results" class="results"></ul>
+  </div>
+
+  <button id="locate" class="locate" type="button">◎ Start from my location</button>
+
+  <div id="card" class="card" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="sheet" class="sheet" hidden></div>
+
+  <script type="module">
+    import * as maplibregl from 'https://unpkg.com/maplibre-gl@^6.15.0/dist/maplibre-gl.mjs';
+
+    const START_COLOUR = '#1b9e3e';
+    const END_COLOUR = '#d62828';
+
+    const MAP_STYLES = {
+      light: 'https://tiles.openfreemap.org/styles/liberty',
+      dark: 'https://tiles.openfreemap.org/styles/dark'
+    };
+
+    // Route colours, brighter versions for the dark map
+    const MODES = {
+      cycle: { label: 'Cycle', words: 'by bicycle', light: '#0b5fff', dark: '#5b95ff' },
+      drive: { label: 'Drive', words: 'by car',     light: '#7a3cff', dark: '#b48cff' },
+      walk:  { label: 'Walk',  words: 'on foot',    light: '#0a8a7a', dark: '#2fd1b5' }
+    };
+
+    // ---------- saved settings (this phone only) ----------
+    function load(key, allowed, fallback) {
+      try {
+        const v = localStorage.getItem(key);
+        return allowed.includes(v) ? v : fallback;
+      } catch (e) { return fallback; }
+    }
+    function save(key, value) {
+      try { localStorage.setItem(key, value); } catch (e) { /* storage blocked: ignore */ }
+    }
+
+    // Theme button icons: half circle = Auto, moon = Dark, sun = Light
+    const SVG = (body) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + body + '</svg>';
+    const THEME_ICONS = {
+      auto: SVG('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/>'),
+      dark: SVG('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
+      light: SVG('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>')
+    };
+
+    let mode = load('mode', Object.keys(MODES), 'cycle');
+    let themeSetting = load('theme', ['auto', 'light', 'dark'], 'auto');
+
+    // ---------- light / dark ----------
+    const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    function effectiveTheme() {
+      return themeSetting === 'auto' ? (darkQuery.matches ? 'dark' : 'light') : themeSetting;
+    }
+    let theme = effectiveTheme();
+
+    function applyThemeToPage() {
+      document.documentElement.dataset.theme = theme;
+      document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#1b1f26' : '#0b5fff';
+      themeBtn.innerHTML = THEME_ICONS[themeSetting]; // fixed icons defined below, no user text
+      themeBtn.dataset.setting = themeSetting;
+    }
+
+    function lineColour() { return MODES[mode][theme]; }
+    function casingColour() { return theme === 'dark' ? '#0b0f14' : '#ffffff'; }
+
+    // ---------- map ----------
+    const map = new maplibregl.Map({
+      container: 'map',
+      style: MAP_STYLES[theme],
+      center: [103.8198, 1.3521],
+      zoom: 11.2,
+      maxBounds: [[103.55, 1.12], [104.15, 1.50]],
+      attributionControl: false
+    });
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+
+    // Map credits (required by the OpenStreetMap licence): shown at first, then folded into
+    // an (i) button after 5 seconds or when the map is moved. Tap (i) to see them again.
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+    function foldCredits() {
+      const credits = document.querySelector('.maplibregl-ctrl-attrib.maplibregl-compact-show');
+      if (credits) credits.classList.remove('maplibregl-compact-show');
+    }
+    setTimeout(foldCredits, 5000);
+    map.once('movestart', foldCredits);
+
+    // ---------- shops, malls, food places and businesses on the map ----------
+    // Uses the place data already inside the free map tiles (OpenStreetMap).
+    const CLS = ['coalesce', ['get', 'class'], ''];
+    const SUB = ['coalesce', ['get', 'subclass'], ''];
+    const MALLS = ['mall', 'department_store', 'marketplace'];
+    const FOOD = ['fast_food', 'restaurant', 'cafe', 'food_court', 'ice_cream', 'bakery',
+                  'bar', 'pub', 'beer', 'biergarten', 'confectionery', 'deli', 'bubble_tea'];
+    const SHOPS = ['shop', 'grocery', 'clothing_store', 'alcohol_shop', 'jewelry', 'supermarket',
+                   'convenience', 'mobile_phone', 'electronics', 'hardware', 'furniture', 'books',
+                   'shoes', 'beauty', 'optician', 'florist', 'gift', 'toys', 'sports', 'bicycle'];
+    const SERVICES = ['bank', 'atm', 'pharmacy', 'chemist', 'fuel', 'laundry', 'post', 'car',
+                      'hairdresser', 'clinic', 'doctors', 'dentist', 'money_transfer', 'car_repair'];
+    const TRANSIT = ['bus', 'rail', 'railway', 'airport', 'aerialway', 'entrance'];
+    const KIND = ['case',
+      ['in', SUB, ['literal', MALLS]], 'mall',
+      ['any', ['in', CLS, ['literal', FOOD]], ['in', SUB, ['literal', FOOD]]], 'food',
+      ['any', ['in', CLS, ['literal', SHOPS]], ['in', SUB, ['literal', SHOPS]]], 'shop',
+      ['any', ['in', CLS, ['literal', SERVICES]], ['in', SUB, ['literal', SERVICES]]], 'service',
+      'other'];
+    const POI_NAME = ['coalesce', ['get', 'name:en'], ['get', 'name_en'], ['get', 'name']];
+    const POI_BASE = ['all',
+      ['match', ['geometry-type'], ['Point', 'MultiPoint'], true, false],
+      ['!', ['in', CLS, ['literal', TRANSIT]]],
+      ['has', 'name']];
+    const POI_GROUPS = [
+      // id,     which kinds,                    dot from zoom, name from zoom, dot size
+      { id: 'mall',  kinds: ['mall'],                     dotZoom: 13, nameZoom: 14, radius: 7 },
+      { id: 'biz',   kinds: ['food', 'shop', 'service'],  dotZoom: 15, nameZoom: 16, radius: 5.5 },
+      { id: 'other', kinds: ['other'],                    dotZoom: 16, nameZoom: 17, radius: 4 }
+    ];
+    const POI_LAYERS = POI_GROUPS.flatMap((g) => ['poi-' + g.id + '-dot', 'poi-' + g.id + '-name']);
+    const KIND_COLOURS = ['match', KIND,
+      'mall', '#e0457b', 'food', '#f08c1a', 'shop', '#7b61ff', 'service', '#14a38b', '#8a94a6'];
+    const KIND_TEXT = ['match', KIND,
+      'mall', '#a8204f', 'food', '#a65800', 'shop', '#4a2fc4', 'service', '#0b6e5d', '#4b5466'];
+
+    const POI_NAMES = {
+      mall: 'Shopping centre', department_store: 'Department store', marketplace: 'Market',
+      supermarket: 'Supermarket', convenience: 'Convenience store', grocery: 'Grocery',
+      fast_food: 'Fast food', food_court: 'Food court / hawker', restaurant: 'Restaurant',
+      cafe: 'Cafe', bakery: 'Bakery', bubble_tea: 'Bubble tea', pharmacy: 'Pharmacy',
+      chemist: 'Pharmacy', bank: 'Bank', atm: 'ATM', fuel: 'Petrol station', clinic: 'Clinic',
+      doctors: 'Clinic', clothing_store: 'Clothing', mobile_phone: 'Phone shop'
+    };
+    function poiCategory(props) {
+      const key = POI_NAMES[props.subclass] ? props.subclass : props.class;
+      if (POI_NAMES[key]) return POI_NAMES[key];
+      const words = String(props.subclass || props.class || 'place').replace(/_/g, ' ');
+      return words.charAt(0).toUpperCase() + words.slice(1);
+    }
+
+    function addShopLayers() {
+      // Hide the map style's own place icons (we draw our own, in both light and dark)
+      for (const layer of map.getStyle().layers) {
+        if (layer['source-layer'] === 'poi' && layer.id !== 'poi_transit' && !layer.id.startsWith('poi-')) {
+          map.setLayoutProperty(layer.id, 'visibility', 'none');
+        }
+      }
+      for (const g of POI_GROUPS) {
+        const filter = ['all', POI_BASE, ['in', KIND, ['literal', g.kinds]]];
+        map.addLayer({
+          id: 'poi-' + g.id + '-dot', type: 'circle', source: 'openmaptiles', 'source-layer': 'poi',
+          minzoom: g.dotZoom, filter,
+          paint: {
+            'circle-radius': g.radius,
+            'circle-color': KIND_COLOURS,
+            'circle-stroke-width': 1.5,
+            'circle-stroke-color': theme === 'dark' ? '#1b1f26' : '#ffffff'
+          }
+        });
+        map.addLayer({
+          id: 'poi-' + g.id + '-name', type: 'symbol', source: 'openmaptiles', 'source-layer': 'poi',
+          minzoom: g.nameZoom, filter,
+          layout: {
+            'text-field': POI_NAME,
+            'text-font': ['Noto Sans Regular'],
+            'text-size': g.id === 'mall' ? 13 : 12,
+            'text-anchor': 'top',
+            'text-offset': [0, 0.8],
+            'text-max-width': 8,
+            'symbol-sort-key': ['coalesce', ['get', 'rank'], 99]
+          },
+          paint: {
+            'text-color': KIND_TEXT,
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 1.4
+          }
+        });
+      }
+    }
+
+    // ---------- extra map layers: rain, traffic, parking, toilets, water, shelters ----------
+    function loadJson(key, fallback) {
+      try { const v = JSON.parse(localStorage.getItem(key)); return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function saveJson(key, value) {
+      try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* storage blocked: ignore */ }
+    }
+
+    const LAYER_LIST = [
+      { id: 'rain',      label: 'Rain',               hint: 'Rain forecast for the next 2 hours, and where it is raining now', colour: '#2f6bff' },
+      { id: 'incidents', label: 'Traffic incidents',  hint: 'Accidents, breakdowns and road works (LTA)', colour: '#e11d48' },
+      { id: 'moto',      label: 'Motorcycle parking', hint: 'Free motorcycle lots right now. Zoom in to see them', colour: '#0f9d77' },
+      { id: 'cars',      label: 'Car parking',        hint: 'Free car lots right now. Zoom in to see them', colour: '#2563eb' },
+      { id: 'toilet',    label: 'Toilets',            hint: 'Zoom in to see them', colour: '#8b5e34' },
+      { id: 'water',     label: 'Drinking water',     hint: 'Zoom in to see them', colour: '#06b6d4' },
+      { id: 'shelter',   label: 'Shelters',           hint: 'Bus stop and other shelters, to wait out the rain', colour: '#64748b' }
+    ];
+    const FEED_FOR = { rain: 'weather', incidents: 'incidents', moto: 'carparks', cars: 'carparks',
+                       toilet: 'amenities', water: 'amenities', shelter: 'amenities' };
+    const shownLayers = Object.assign({}, loadJson('layers', {}));
+    const alertSettings = Object.assign({ rain: true, heat: true }, loadJson('alertSettings', {}));
+
+    // Live data, fetched only when a layer or alert needs it, and refreshed when it gets old
+    const feeds = {
+      weather:   { url: '/api/weather',             maxAge: 10 * 60 * 1000 },
+      incidents: { url: '/api/lta?kind=incidents',  maxAge: 3 * 60 * 1000 },
+      carparks:  { url: '/api/lta?kind=carparks',   maxAge: 3 * 60 * 1000 },
+      amenities: { url: '/api/amenities',           maxAge: 24 * 60 * 60 * 1000 }
+    };
+    for (const f of Object.values(feeds)) Object.assign(f, { data: null, at: 0, error: null, loading: null });
+
+    function loadFeed(name) {
+      const f = feeds[name];
+      if (f.loading) return f.loading;
+      if (f.data && Date.now() - f.at < f.maxAge) return Promise.resolve(f.data);
+      f.loading = (async () => {
+        try {
+          f.data = await getJson(f.url);
+          f.at = Date.now();
+          f.error = null;
+        } catch (e) {
+          f.error = e.message;
+          f.at = Date.now() - f.maxAge + 60 * 1000; // try again in a minute
+        }
+        f.loading = null;
+        updateOverlays();
+        return f.data;
+      })();
+      return f.loading;
+    }
+
+    function refreshShownLayers() {
+      for (const L of LAYER_LIST) if (shownLayers[L.id]) loadFeed(FEED_FOR[L.id]);
+    }
+
+    const pointFeature = (lng, lat, props) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: props });
+    const collection = (features) => ({ type: 'FeatureCollection', features });
+    const OVERLAY_SOURCES = ['ov-rain', 'ov-raining', 'ov-incidents', 'ov-moto', 'ov-cars', 'ov-amen'];
+
+    function overlayData(id) {
+      const w = feeds.weather.data, inc = feeds.incidents.data, cp = feeds.carparks.data, am = feeds.amenities.data;
+      const lots = (vehicle, t) => collection(cp && cp.carparks ? cp.carparks.filter((c) => c.vehicle === vehicle)
+        .map((c) => pointFeature(c.lng, c.lat, { t, name: c.name, lots: c.lots, agency: c.agency })) : []);
+      switch (id) {
+        case 'ov-rain': return collection(w && w.forecast ? w.forecast.areas.filter((a) => a.rain)
+          .map((a) => pointFeature(a.lng, a.lat, { t: 'rain', name: a.name, forecast: a.forecast, until: w.forecast.validUntil || '' })) : []);
+        case 'ov-raining': return collection(w && w.raining ? w.raining
+          .map((r) => pointFeature(r.lng, r.lat, { t: 'raining', name: r.name, mm: r.mm })) : []);
+        case 'ov-incidents': return collection(inc && inc.incidents ? inc.incidents
+          .map((i) => pointFeature(i.lng, i.lat, { t: 'incident', type: i.type, message: i.message })) : []);
+        case 'ov-moto': return lots('motorcycle', 'moto');
+        case 'ov-cars': return lots('car', 'car');
+        case 'ov-amen': return collection(am && am.places ? am.places
+          .map((p) => pointFeature(p.lng, p.lat, { t: p.kind, name: p.name, busStop: !!p.busStop,
+            fee: p.fee === null || p.fee === undefined ? '' : (p.fee ? 'yes' : 'no'), wheelchair: !!p.wheelchair })) : []);
+      }
+      return collection([]);
+    }
+
+    const GROUP_LAYERS = {
+      rain: ['ov-rain-area', 'ov-rain-name', 'ov-raining-dot', 'ov-raining-mm'],
+      incidents: ['ov-incidents-dot', 'ov-incidents-name'],
+      moto: ['ov-moto-dot', 'ov-moto-num'],
+      cars: ['ov-cars-dot', 'ov-cars-num']
+    };
+    const OVERLAY_TAP = ['ov-incidents-dot', 'ov-moto-dot', 'ov-cars-dot', 'ov-amen-dot', 'ov-raining-dot', 'ov-rain-area'];
+    const RAIN_COLOUR = ['case', ['in', 'Thunder', ['get', 'forecast']], '#7b4dff',
+                         ['in', 'Shower', ['get', 'forecast']], '#2f6bff', '#4fa3ff'];
+
+    function addOverlayLayers() {
+      for (const id of OVERLAY_SOURCES) map.addSource(id, { type: 'geojson', data: overlayData(id) });
+      const edge = theme === 'dark' ? '#1b1f26' : '#ffffff';
+      const labelPaint = { 'text-color': theme === 'dark' ? '#f4f6fa' : '#1f2937',
+                           'text-halo-color': theme === 'dark' ? '#0e1116' : '#ffffff', 'text-halo-width': 1.4 };
+      const font = ['Noto Sans Regular'];
+
+      // Rain: a soft circle over each forecast area where rain is expected, and live rain gauges
+      map.addLayer({ id: 'ov-rain-area', type: 'circle', source: 'ov-rain', paint: {
+        'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 10, 14, 15, 460],
+        'circle-color': RAIN_COLOUR, 'circle-opacity': 0.22,
+        'circle-stroke-color': RAIN_COLOUR, 'circle-stroke-width': 1.5, 'circle-stroke-opacity': 0.6 } });
+      map.addLayer({ id: 'ov-rain-name', type: 'symbol', source: 'ov-rain',
+        layout: { 'text-field': ['get', 'forecast'], 'text-font': font, 'text-size': 13, 'text-max-width': 8 },
+        paint: labelPaint });
+      map.addLayer({ id: 'ov-raining-dot', type: 'circle', source: 'ov-raining', paint: {
+        'circle-radius': 6, 'circle-color': '#1d4ed8', 'circle-stroke-width': 2, 'circle-stroke-color': edge } });
+      map.addLayer({ id: 'ov-raining-mm', type: 'symbol', source: 'ov-raining', minzoom: 12,
+        layout: { 'text-field': ['concat', ['to-string', ['get', 'mm']], ' mm'], 'text-font': font, 'text-size': 11,
+                  'text-anchor': 'top', 'text-offset': [0, 0.9] },
+        paint: labelPaint });
+
+      // Traffic incidents
+      map.addLayer({ id: 'ov-incidents-dot', type: 'circle', source: 'ov-incidents', paint: {
+        'circle-radius': 9, 'circle-color': '#e11d48', 'circle-stroke-width': 2.5, 'circle-stroke-color': edge } });
+      map.addLayer({ id: 'ov-incidents-name', type: 'symbol', source: 'ov-incidents', minzoom: 12,
+        layout: { 'text-field': ['get', 'type'], 'text-font': font, 'text-size': 12, 'text-anchor': 'top', 'text-offset': [0, 1.1] },
+        paint: labelPaint });
+
+      // Parking: a numbered dot per car park (motorcycles on the left, cars on the right)
+      for (const [src, colour, shift] of [['ov-moto', '#0f9d77', -12], ['ov-cars', '#2563eb', 12]]) {
+        map.addLayer({ id: src + '-dot', type: 'circle', source: src, minzoom: 12, paint: {
+          'circle-radius': 11, 'circle-color': ['case', ['>', ['get', 'lots'], 0], colour, '#9aa3ad'],
+          'circle-stroke-width': 2, 'circle-stroke-color': edge, 'circle-translate': [shift, 0] } });
+        map.addLayer({ id: src + '-num', type: 'symbol', source: src, minzoom: 12,
+          layout: { 'text-field': ['to-string', ['get', 'lots']], 'text-font': font, 'text-size': 11,
+                    'text-allow-overlap': true, 'text-ignore-placement': true },
+          paint: { 'text-color': '#ffffff', 'text-translate': [shift, 0] } });
+      }
+
+      // Toilets, drinking water, shelters
+      map.addLayer({ id: 'ov-amen-dot', type: 'circle', source: 'ov-amen', minzoom: 14, paint: {
+        'circle-radius': 6.5,
+        'circle-color': ['match', ['get', 't'], 'toilet', '#8b5e34', 'water', '#06b6d4', '#64748b'],
+        'circle-stroke-width': 1.5, 'circle-stroke-color': edge } });
+    }
+
+    function applyOverlayVisibility() {
+      for (const [group, ids] of Object.entries(GROUP_LAYERS)) {
+        for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', shownLayers[group] ? 'visible' : 'none');
+      }
+      const kinds = ['toilet', 'water', 'shelter'].filter((k) => shownLayers[k]);
+      if (map.getLayer('ov-amen-dot')) {
+        map.setLayoutProperty('ov-amen-dot', 'visibility', kinds.length ? 'visible' : 'none');
+        map.setFilter('ov-amen-dot', ['in', ['get', 't'], ['literal', kinds.length ? kinds : ['none']]]);
+      }
+    }
+
+    function updateOverlays() {
+      for (const id of OVERLAY_SOURCES) {
+        const s = map.getSource(id);
+        if (s) s.setData(overlayData(id));
+      }
+      applyOverlayVisibility();
+      if (!sheet.hidden) renderSheet();
+    }
+
+    // What a tapped dot is, in words, for the card
+    function describeFeature(f) {
+      const p = f.properties || {};
+      const layerId = (f.layer && f.layer.id) || '';
+      if (!layerId.startsWith('ov-')) {
+        const name = p['name:en'] || p.name_en || p.name;
+        return name ? { name, address: poiCategory(p) } : null;
+      }
+      const lotWords = (n, what) => n + ' ' + what + ' lot' + (Number(n) === 1 ? '' : 's') + ' free now' + (p.agency ? ' · ' + p.agency : '');
+      switch (p.t) {
+        case 'incident': return { name: p.type, address: p.message, noRecent: true };
+        case 'moto': return { name: p.name, address: lotWords(p.lots, 'motorcycle'), noRecent: true };
+        case 'car': return { name: p.name, address: lotWords(p.lots, 'car'), noRecent: true };
+        case 'toilet': return { name: p.name || 'Toilet', noRecent: true,
+          address: ['Toilet', p.fee === 'yes' ? 'Paid' : p.fee === 'no' ? 'Free' : '', p.wheelchair ? 'Wheelchair accessible' : ''].filter(Boolean).join(' · ') };
+        case 'water': return { name: p.name || 'Drinking water', address: 'Drinking water tap or fountain', noRecent: true };
+        case 'shelter': return { name: p.name || (p.busStop ? 'Bus stop shelter' : 'Shelter'), noRecent: true,
+          address: p.busStop ? 'Bus stop shelter, cover from rain' : 'Covered shelter, cover from rain' };
+        case 'raining': return { name: p.name, address: p.mm + ' mm of rain in the last 5 minutes', info: true };
+        case 'rain': return { name: p.name, address: p.forecast + (p.until ? ' until ' + clockText(p.until) : ' in the next 2 hours'), info: true };
+      }
+      return null;
+    }
+
+    function clockText(iso) {
+      const d = new Date(iso);
+      return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    // Tap a shop, car park, toilet, incident or rain area for details and "Start here / Go here"
+    map.on('click', (e) => {
+      if (list.dataset.quick) { list.innerHTML = ''; list.dataset.quick = ''; }
+      const layers = [...POI_LAYERS, ...OVERLAY_TAP].filter((id) => map.getLayer(id));
+      if (!layers.length) return;
+      const p = e.point;
+      const found = map.queryRenderedFeatures([[p.x - 20, p.y - 20], [p.x + 20, p.y + 20]], { layers });
+      let best = null, bestDistance = Infinity;
+      for (const f of found) {
+        const place = describeFeature(f);
+        if (!place || !f.geometry) continue;
+        const c = f.geometry.type === 'MultiPoint' ? f.geometry.coordinates[0] : f.geometry.coordinates;
+        const px = map.project(c);
+        let d = Math.hypot(px.x - p.x, px.y - p.y);
+        if (f.layer && f.layer.id === 'ov-rain-area') d += 1000; // big rain circles lose to anything closer
+        if (d < bestDistance) { bestDistance = d; best = Object.assign(place, { lng: c[0], lat: c[1] }); }
+      }
+      if (best) choose(best);
+    });
+
+    // ---------- layers and alerts menu ----------
+    const sheet = document.getElementById('sheet');
+
+    function toggleRow(label, hint, checked, colour, onTap, bad) {
+      const b = el('button', 'toggle');
+      b.type = 'button';
+      b.setAttribute('role', 'switch');
+      b.setAttribute('aria-checked', String(!!checked));
+      if (colour) { const sw = el('span', 'swatch'); sw.style.background = colour; b.append(sw); }
+      const words = el('span', 'words');
+      words.append(el('span', 'label', label));
+      if (hint) words.append(el('span', 'hint' + (bad ? ' bad' : ''), hint));
+      b.append(words, el('span', 'switch'));
+      b.addEventListener('click', onTap);
+      return b;
+    }
+
+    function renderSheet() {
+      const panel = el('div', 'sheet-panel');
+      panel.setAttribute('role', 'dialog');
+      panel.setAttribute('aria-label', 'Map layers and alerts');
+      panel.append(el('h2', null, 'Map layers'));
+      for (const L of LAYER_LIST) {
+        const f = feeds[FEED_FOR[L.id]];
+        const on = !!shownLayers[L.id];
+        const bad = on && !!f.error;
+        const hint = bad ? f.error : (on && f.loading ? 'Loading…' : L.hint);
+        panel.append(toggleRow(L.label, hint, on, L.colour, () => setLayer(L.id, !on), bad));
+      }
+      panel.append(el('h3', null, 'Alerts'));
+      panel.append(toggleRow('Rain alerts', 'When rain is forecast near you in the next 2 hours', alertSettings.rain, null, () => setAlert('rain')));
+      panel.append(toggleRow('Heat alerts', 'A reminder to drink water when heat stress is high', alertSettings.heat, null, () => setAlert('heat')));
+      const done = el('button', 'sheet-done', 'Done');
+      done.type = 'button';
+      done.addEventListener('click', closeSheet);
+      panel.append(done);
+      sheet.innerHTML = '';
+      sheet.append(panel);
+    }
+
+    function openSheet() { renderSheet(); sheet.hidden = false; }
+    function closeSheet() { sheet.hidden = true; sheet.innerHTML = ''; }
+    sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
+    document.getElementById('layers').addEventListener('click', openSheet);
+
+    function setLayer(id, on) {
+      shownLayers[id] = on;
+      saveJson('layers', shownLayers);
+      if (on) loadFeed(FEED_FOR[id]);
+      applyOverlayVisibility();
+      if (!sheet.hidden) renderSheet();
+    }
+
+    function setAlert(kind) {
+      alertSettings[kind] = !alertSettings[kind];
+      saveJson('alertSettings', alertSettings);
+      checkAlerts();
+      if (!sheet.hidden) renderSheet();
+    }
+
+    // ---------- rain and heat alerts ----------
+    const alertsBox = document.getElementById('alerts');
+    const dismissedAlerts = new Set(loadJson('dismissedAlerts', []));
+    const spokenAlerts = new Set();
+
+    // The rider's position if known, otherwise the middle of the map
+    function whereAmI() {
+      if (lastFix) return { lat: lastFix.lat, lng: lastFix.lng };
+      if (start && start.name === 'My location') return { lat: start.lat, lng: start.lng };
+      const c = map.getCenter();
+      return { lat: c.lat, lng: c.lng };
+    }
+
+    function nearestTo(items, here) {
+      let best = null;
+      for (const item of items) {
+        const d = metresBetween([item.lng, item.lat], [here.lng, here.lat]);
+        if (!best || d < best.dist) best = { item, dist: d };
+      }
+      return best;
+    }
+
+    async function checkAlerts() {
+      if (!alertSettings.rain && !alertSettings.heat) { renderAlerts([]); return; }
+      const w = await loadFeed('weather');
+      const found = [];
+      if (w) {
+        const here = whereAmI();
+        if (alertSettings.rain && w.forecast && w.forecast.areas.length) {
+          const n = nearestTo(w.forecast.areas, here);
+          if (n && n.item.rain && n.dist < 8000) {
+            const until = clockText(w.forecast.validUntil);
+            found.push({
+              kind: 'rain', area: n.item,
+              key: 'rain|' + n.item.name + '|' + n.item.forecast + '|' + w.forecast.validUntil,
+              text: n.item.forecast + ' expected around ' + n.item.name + (until ? ' until ' + until : ' in the next 2 hours'),
+              speech: n.item.forecast + ' expected around ' + n.item.name + ' in the next 2 hours.'
+            });
+          }
+        }
+        if (alertSettings.heat && w.heat && w.heat.length) {
+          const n = nearestTo(w.heat, here);
+          if (n && n.dist < 10000 && /high/i.test(n.item.level)) {
+            found.push({
+              kind: 'heat',
+              key: 'heat|' + n.item.name + '|' + n.item.level + '|' + new Date().toDateString(),
+              text: 'High heat stress around ' + n.item.name + (n.item.wbgt ? ' (' + n.item.wbgt + '°C WBGT)' : '')
+                + '. Drink water and rest in the shade.',
+              speech: 'High heat stress. Remember to drink water.'
+            });
+          }
+        }
+      }
+      renderAlerts(found.filter((a) => !dismissedAlerts.has(a.key)));
+    }
+
+    function renderAlerts(items) {
+      alertsBox.innerHTML = '';
+      for (const a of items) {
+        const box = el('div', 'alert alert-' + a.kind);
+        box.setAttribute('role', 'status');
+        const text = el('div', 'alert-text', (a.kind === 'rain' ? '🌧 ' : '🥵 ') + a.text);
+        if (a.kind === 'rain') {
+          // Tap the alert to see the rain on the map
+          text.addEventListener('click', () => {
+            if (!shownLayers.rain) setLayer('rain', true);
+            map.flyTo({ center: [a.area.lng, a.area.lat], zoom: 12 });
+          });
+        }
+        const x = el('button', 'alert-close', '×');
+        x.type = 'button';
+        x.setAttribute('aria-label', 'Dismiss alert');
+        x.addEventListener('click', () => {
+          dismissedAlerts.add(a.key);
+          saveJson('dismissedAlerts', [...dismissedAlerts].slice(-30));
+          box.remove();
+        });
+        box.append(text, x);
+        alertsBox.append(box);
+        if (riding && !spokenAlerts.has(a.key)) { spokenAlerts.add(a.key); speak(a.speech); }
+      }
+    }
+
+    // Keep layers and alerts fresh while the app is open
+    setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      refreshShownLayers();
+      checkAlerts();
+    }, 60 * 1000);
+    setTimeout(() => { refreshShownLayers(); checkAlerts(); }, 1500);
+
+    // Runs on first load and again after every light/dark switch
+    map.on('style.load', () => {
+      try { addShopLayers(); } catch (e) { /* map still works without the shop layer */ }
+      try { addOverlayLayers(); applyOverlayVisibility(); } catch (e) { /* map still works without these layers */ }
+      map.addSource('route', { type: 'geojson', data: routeFeature() });
+      map.addLayer({ id: 'route-casing', type: 'line', source: 'route',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': casingColour(), 'line-width': 11 } });
+      map.addLayer({ id: 'route-line', type: 'line', source: 'route',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': lineColour(), 'line-width': 7 } });
+      if (theme === 'dark') brightenMapLabels();
+    });
+
+    // The dark map's street and place names are dim; make them near-white with a dark outline
+    function brightenMapLabels() {
+      try {
+        for (const layer of map.getStyle().layers) {
+          if (layer.type !== 'symbol' || !layer.layout || !layer.layout['text-field']) continue;
+          map.setPaintProperty(layer.id, 'text-color', '#f4f6fa');
+          map.setPaintProperty(layer.id, 'text-halo-color', '#0e1116');
+          map.setPaintProperty(layer.id, 'text-halo-width', 1.6);
+        }
+      } catch (e) { /* keep the map's own label colours if anything goes wrong */ }
+    }
+
+    // While riding, only the part of the route still ahead is drawn
+    function routeFeature() {
+      const coords = shownCoords || (lastRoute ? lastRoute.coordinates : []);
+      return { type: 'Feature', geometry: { type: 'LineString', coordinates: coords } };
+    }
+
+    function drawRoute() {
+      const src = map.getSource('route');
+      if (src) src.setData(routeFeature());
+      if (map.getLayer('route-line')) map.setPaintProperty('route-line', 'line-color', lineColour());
+    }
+
+    const input = document.getElementById('q');
+    const list = document.getElementById('results');
+    const clearBtn = document.getElementById('clear');
+    const themeBtn = document.getElementById('theme');
+    const card = document.getElementById('card');
+    const locateBtn = document.getElementById('locate');
+    const toast = document.getElementById('toast');
+
+    let picked = null;       // place chosen from search, waiting for Start/Go
+    let pickedMarker = null;
+    let start = null, end = null;
+    let startMarker = null, endMarker = null;
+    let timer = null;
+    let lastQuery = '';
+    let routeRequest = 0;    // ignores answers to older route requests
+    let lastRoute = null;    // the route currently on the map
+    let shownCoords = null;  // the part of the route still ahead (while riding)
+    let toastTimer = null;
+
+    // Ride tracking (location is used on this phone only and never saved)
+    let riding = false;
+    let watchId = null;
+    let following = true;    // map keeps the rider in view
+    let meMarker = null;
+    let lastFix = null;      // { lat, lng, accuracy, heading, time }
+    let progress = null;     // { remaining_m, offRoute_m }
+    let offRouteCount = 0;
+    let lastRerouteAt = 0;
+    let routeGeo = null;     // route in metres, for working out progress
+
+    applyThemeToPage();
+
+    function setTheme(next) {
+      themeSetting = next;
+      save('theme', themeSetting);
+      const newTheme = effectiveTheme();
+      const changed = newTheme !== theme;
+      theme = newTheme;
+      applyThemeToPage();
+      if (changed) map.setStyle(MAP_STYLES[theme]);
+    }
+
+    themeBtn.addEventListener('click', () => {
+      const order = ['auto', 'dark', 'light'];
+      const next = order[(order.indexOf(themeSetting) + 1) % order.length];
+      setTheme(next);
+      const names = { auto: 'Auto: follows your phone', dark: 'Dark mode', light: 'Light mode' };
+      showToast(names[next]);
+    });
+
+    // In Auto, follow the phone when it switches between light and dark
+    darkQuery.addEventListener('change', () => { if (themeSetting === 'auto') setTheme('auto'); });
+
+    function showToast(text) {
+      toast.textContent = text;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 1600);
+    }
+
+    // ---------- keep the screen on while a route is showing ----------
+    let wakeLock = null;
+
+    async function keepScreenOn() {
+      if (!('wakeLock' in navigator) || wakeLock || document.visibilityState !== 'visible') {
+        updateWakeNote();
+        return;
+      }
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; updateWakeNote(); });
+      } catch (e) {
+        wakeLock = null; // e.g. battery saver on: the app still works, screen just dims normally
+      }
+      updateWakeNote();
+    }
+
+    function letScreenSleep() {
+      if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+    }
+
+    function updateWakeNote() {
+      const note = card.querySelector('.wake');
+      if (note) note.textContent = (lastRoute && wakeLock) ? 'Screen stays on while this route is showing' : '';
+    }
+
+    // The phone drops the lock when you leave the app; take it back when you return
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && lastRoute) keepScreenOn();
+    });
+
+    // ---------- helpers ----------
+    function el(tag, className, text) {
+      const e = document.createElement(tag);
+      if (className) e.className = className;
+      if (text != null) e.textContent = text;
+      return e;
+    }
+
+    function formatDistance(m) {
+      if (!m) return '';
+      return m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(1) + ' km';
+    }
+
+    function formatTime(s) {
+      if (!s) return '';
+      const mins = Math.max(1, Math.round(s / 60));
+      if (mins < 60) return mins + ' min';
+      return Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min';
+    }
+
+    function inSingapore(lat, lng) {
+      return lat > 1.1 && lat < 1.5 && lng > 103.5 && lng < 104.2;
+    }
+
+    // Fetch JSON, turning non-JSON replies into a readable error
+    async function getJson(url) {
+      const resp = await fetch(url);
+      let data;
+      try {
+        data = await resp.json();
+      } catch (e) {
+        throw new Error('The service replied with status ' + resp.status + '.');
+      }
+      if (data.error) throw new Error(data.error);
+      return data;
+    }
+
+    // Keep the +/- buttons above the card
+    function liftControls() {
+      const ctrl = document.querySelector('.maplibregl-ctrl-bottom-right');
+      if (!ctrl) return;
+      ctrl.style.bottom = card.hidden ? '' : (card.offsetHeight + 12) + 'px';
+    }
+
+    function showCard(children) {
+      card.innerHTML = '';
+      children.forEach((c) => card.appendChild(c));
+      card.hidden = false;
+      locateBtn.hidden = true;
+      liftControls();
+    }
+
+    function hideCard() {
+      card.hidden = true;
+      card.innerHTML = '';
+      locateBtn.hidden = false;
+      liftControls();
+    }
+
+    // ---------- search ----------
+    function showMessage(text) {
+      list.innerHTML = '';
+      list.dataset.quick = '';
+      list.appendChild(el('li', 'msg', text));
+    }
+
+    function showResults(results) {
+      list.innerHTML = '';
+      list.dataset.quick = '';
+      if (!results.length) { showMessage('No places found'); return; }
+      for (const r of results) {
+        const li = el('li');
+        const addr = el('div', 'addr');
+        if (r.category) addr.append(el('span', 'tag', r.category));
+        addr.append(document.createTextNode(r.address || ''));
+        li.append(el('div', 'name', r.name), addr);
+        li.addEventListener('click', () => choose(r));
+        list.appendChild(li);
+      }
+    }
+
+    async function search(q) {
+      lastQuery = q;
+      showMessage('Searching…');
+      try {
+        // Send the middle of the map so nearby shops come first
+        const c = map.getCenter();
+        const data = await getJson('/api/search?q=' + encodeURIComponent(q)
+          + '&lat=' + c.lat.toFixed(2) + '&lng=' + c.lng.toFixed(2));
+        if (q !== lastQuery) return;
+        showResults(data.results || []);
+      } catch (e) {
+        if (q === lastQuery) showMessage('Search problem: ' + e.message);
+      }
+    }
+
+    input.addEventListener('input', () => {
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (q.length === 0) { lastQuery = ''; showQuickList(); return; }
+      if (q.length < 2) { list.innerHTML = ''; list.dataset.quick = ''; lastQuery = ''; return; }
+      timer = setTimeout(() => search(q), 400);
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        clearTimeout(timer);
+        const q = input.value.trim();
+        if (q.length >= 2) search(q);
+      }
+    });
+
+    clearBtn.addEventListener('click', () => {
+      input.value = '';
+      list.innerHTML = '';
+      list.dataset.quick = '';
+      lastQuery = '';
+      input.focus();
+      showQuickList();
+    });
+
+    // ---------- choosing a place ----------
+    function choose(r) {
+      list.innerHTML = '';
+      list.dataset.quick = '';
+      input.value = '';
+      input.blur(); // hide the phone keyboard
+
+      // Information only (e.g. a rain area): show it, with no route buttons
+      if (r.info) {
+        const ok = el('button', 'btn-clear', 'Close');
+        ok.addEventListener('click', () => { if (riding) showRideCard(); else if (start || end) showTrip(); else hideCard(); });
+        const row = el('div', 'row');
+        row.append(ok);
+        showCard([el('div', 'place', r.name), el('div', 'sub', r.address), row]);
+        return;
+      }
+
+      picked = r;
+      if (!r.noRecent) remember(r);
+      if (pickedMarker) pickedMarker.remove();
+      pickedMarker = new maplibregl.Marker({ color: '#0b5fff' }).setLngLat([r.lng, r.lat]).addTo(map);
+      map.flyTo({ center: [r.lng, r.lat], zoom: Math.max(map.getZoom(), 16) });
+
+      const startBtn = el('button', 'btn-start', 'Start here');
+      const endBtn = el('button', 'btn-end', 'Go here');
+      startBtn.addEventListener('click', () => setPoint('start', picked));
+      endBtn.addEventListener('click', () => setPoint('end', picked));
+      const row = el('div', 'row');
+      row.append(startBtn, endBtn);
+      if (!r.noRecent) {
+        const star = el('button', 'btn-star', isSaved(r) ? '★' : '☆');
+        star.type = 'button';
+        star.setAttribute('aria-label', isSaved(r) ? 'Remove from saved places' : 'Save this place');
+        star.addEventListener('click', () => {
+          const nowSaved = toggleSaved(r);
+          star.textContent = nowSaved ? '★' : '☆';
+          star.setAttribute('aria-label', nowSaved ? 'Remove from saved places' : 'Save this place');
+          showToast(nowSaved ? 'Saved' : 'Removed from saved');
+        });
+        row.append(star);
+      }
+      showCard([el('div', 'place', r.name), el('div', 'sub', r.address), row]);
+    }
+
+    // ---------- saved and recent places (kept on this phone only) ----------
+    let savedPlaces = Array.isArray(loadJson('saved', [])) ? loadJson('saved', []) : [];
+    let recentPlaces = Array.isArray(loadJson('recent', [])) ? loadJson('recent', []) : [];
+
+    function samePlace(a, b) {
+      return a.name === b.name && Math.abs(a.lat - b.lat) < 1e-4 && Math.abs(a.lng - b.lng) < 1e-4;
+    }
+    function slim(p) {
+      return { name: p.name, address: p.address || '', category: p.category || null, lat: p.lat, lng: p.lng };
+    }
+    function isSaved(p) { return savedPlaces.some((s) => samePlace(s, p)); }
+
+    function toggleSaved(p) {
+      if (isSaved(p)) {
+        savedPlaces = savedPlaces.filter((s) => !samePlace(s, p));
+      } else {
+        savedPlaces = [slim(p), ...savedPlaces].slice(0, 30);
+      }
+      saveJson('saved', savedPlaces);
+      return isSaved(p);
+    }
+
+    function remember(p) {
+      if (!p || p.name === 'My location') return;
+      recentPlaces = [slim(p), ...recentPlaces.filter((r) => !samePlace(r, p))].slice(0, 10);
+      saveJson('recent', recentPlaces);
+    }
+
+    // Tapping the empty search box shows saved places, then recent ones
+    function showQuickList() {
+      if (input.value.trim()) return;
+      list.innerHTML = '';
+      const addGroup = (title, items, mark) => {
+        if (!items.length) return;
+        list.appendChild(el('li', 'section', title));
+        for (const r of items) {
+          const li = el('li');
+          const name = el('div', 'name');
+          name.append(el('span', 'mark', mark), document.createTextNode(r.name));
+          li.append(name, el('div', 'addr', r.address || ''));
+          li.addEventListener('click', () => choose(r));
+          list.appendChild(li);
+        }
+      };
+      addGroup('Saved', savedPlaces, '★');
+      addGroup('Recent', recentPlaces.filter((r) => !isSaved(r)), '🕘');
+      list.dataset.quick = list.childElementCount ? '1' : '';
+    }
+
+    input.addEventListener('focus', showQuickList);
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (list.dataset.quick && document.activeElement !== input) { list.innerHTML = ''; list.dataset.quick = ''; }
+      }, 300);
+    });
+
+    function setPoint(which, place) {
+      if (!place) return;
+      if (pickedMarker) { pickedMarker.remove(); pickedMarker = null; }
+      picked = null;
+      // Mid-ride: a new start ends the ride; a new destination reroutes from where the rider is
+      if (riding && which === 'start') stopRide();
+      const lngLat = [place.lng, place.lat];
+      if (riding && which === 'end' && lastFix) {
+        end = place;
+        if (endMarker) endMarker.remove();
+        endMarker = new maplibregl.Marker({ color: END_COLOUR }).setLngLat(lngLat).addTo(map);
+        rerouteFromHere();
+        return;
+      }
+      if (which === 'start') {
+        start = place;
+        if (startMarker) startMarker.remove();
+        startMarker = new maplibregl.Marker({ color: START_COLOUR }).setLngLat(lngLat).addTo(map);
+      } else {
+        end = place;
+        if (endMarker) endMarker.remove();
+        endMarker = new maplibregl.Marker({ color: END_COLOUR }).setLngLat(lngLat).addTo(map);
+      }
+      if (start && end) {
+        getRoute();
+      } else {
+        if (!end) map.flyTo({ center: lngLat, zoom: 15 });
+        showTrip();
+      }
+    }
+
+    // ---------- my location ----------
+    function useMyLocation() {
+      if (!('geolocation' in navigator)) {
+        showTrip([el('div', 'error', 'This browser cannot share your location.')]);
+        return;
+      }
+      showTrip([el('div', 'sub', 'Finding your location…')]);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          if (!inSingapore(lat, lng)) {
+            showTrip([el('div', 'error', 'Your location seems to be outside Singapore.')]);
+            return;
+          }
+          setPoint('start', { name: 'My location', address: '', lat, lng });
+        },
+        (err) => {
+          const msg = err.code === 1
+            ? 'Location is blocked. Allow location for this site in your browser settings, then try again.'
+            : 'Could not get your location. Check that location is on, then try again.';
+          showTrip([el('div', 'error', msg)]);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      );
+    }
+
+    locateBtn.addEventListener('click', useMyLocation);
+
+    // ---------- trip card ----------
+    function tripLine(colour, label, place) {
+      const line = el('div');
+      const dot = el('span', 'dot');
+      dot.style.background = colour;
+      line.append(dot, document.createTextNode(label + ': ' + (place ? place.name : 'search for a place')));
+      return line;
+    }
+
+    function modeSwitch() {
+      const wrap = el('div', 'modes');
+      for (const key of Object.keys(MODES)) {
+        const b = el('button', key === mode ? 'on' : '', MODES[key].label);
+        b.type = 'button';
+        b.addEventListener('click', () => setMode(key));
+        wrap.appendChild(b);
+      }
+      return wrap;
+    }
+
+    function setMode(key) {
+      if (key === mode) return;
+      mode = key;
+      save('mode', mode);
+      if (map.getLayer('route-line')) map.setPaintProperty('route-line', 'line-color', lineColour());
+      if (riding && lastFix) { rerouteFromHere(); return; }
+      if (start && end) getRoute(); else showTrip();
+    }
+
+    function showTrip(extra = []) {
+      const trip = el('div', 'trip');
+      trip.append(tripLine(START_COLOUR, 'From', start), tripLine(END_COLOUR, 'To', end));
+
+      const row = el('div', 'row');
+      if (lastRoute) {
+        const go = el('button', 'btn-go', '▶ Start ride');
+        go.addEventListener('click', startRide);
+        row.append(go);
+      } else if (!start || start.name !== 'My location') {
+        const me = el('button', 'btn-me', 'Start from my location');
+        me.addEventListener('click', useMyLocation);
+        row.append(me);
+      }
+      const clear = el('button', 'btn-clear', 'Clear');
+      clear.addEventListener('click', clearRoute);
+      row.append(clear);
+
+      showCard([modeSwitch(), trip, ...extra, el('div', 'wake'), row]);
+      updateWakeNote();
+    }
+
+    function clearRoute() {
+      stopRide();
+      routeRequest++;
+      shownCoords = null;
+      start = end = picked = lastRoute = null;
+      [startMarker, endMarker, pickedMarker].forEach((m) => m && m.remove());
+      startMarker = endMarker = pickedMarker = null;
+      drawRoute();
+      letScreenSleep();
+      hideCard();
+    }
+
+    // ---------- routing ----------
+    async function getRoute() {
+      const myRequest = ++routeRequest;
+      const m = MODES[mode];
+      if (riding) showRideCard([el('div', 'sub', 'Rerouting from where you are…')]);
+      else showTrip([el('div', 'sub', 'Finding a route ' + m.words + '…')]);
+      const url = '/api/route?type=' + mode
+        + '&start=' + start.lat + ',' + start.lng
+        + '&end=' + end.lat + ',' + end.lng;
+      try {
+        const data = await getJson(url);
+        if (myRequest !== routeRequest) return; // user changed something meanwhile
+
+        lastRoute = data;
+        shownCoords = null;
+        routeGeo = measureRoute(data.coordinates);
+        navSteps = buildSteps(data);
+        drawRoute();
+        keepScreenOn();
+
+        if (riding) {
+          // Mid-ride: keep the map on the rider instead of zooming out to the whole route
+          if (lastFix) updateProgress(lastFix);
+          showRideCard();
+          return;
+        }
+
+        const bounds = data.coordinates.reduce(
+          (b, c) => b.extend(c), new maplibregl.LngLatBounds(data.coordinates[0], data.coordinates[0]));
+        map.fitBounds(bounds, { padding: { top: 100, bottom: 300, left: 40, right: 60 }, maxZoom: 17 });
+
+        const summary = el('div', 'summary');
+        summary.append(
+          document.createTextNode(formatDistance(data.distance_m)),
+          el('small', null, '  ·  ' + formatTime(data.time_s) + ' ' + m.words));
+        showTrip([summary]);
+      } catch (e) {
+        if (myRequest !== routeRequest) return;
+        if (riding) {
+          // Keep riding on the old route; try again on the next GPS update
+          showRideCard([el('div', 'error', 'Could not reroute: ' + e.message)]);
+          return;
+        }
+        lastRoute = null;
+        routeGeo = null;
+        drawRoute();
+        letScreenSleep();
+        showTrip([el('div', 'error', 'Route problem: ' + e.message)]);
+      }
+    }
+
+    // ---------- route maths (flat-earth metres: accurate enough inside Singapore) ----------
+    const M_PER_DEG_LAT = 110574;
+    const M_PER_DEG_LNG = 111320 * Math.cos(1.35 * Math.PI / 180);
+    function toXY(c) { return [c[0] * M_PER_DEG_LNG, c[1] * M_PER_DEG_LAT]; }
+
+    function measureRoute(coords) {
+      const pts = coords.map(toXY);
+      const cum = [0];
+      for (let i = 1; i < pts.length; i++) {
+        cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+      }
+      return { coords, pts, cum, total: cum[cum.length - 1] };
+    }
+
+    // Nearest point on the route to the rider: how far off it they are, and how much is left
+    function snapToRoute(lng, lat) {
+      const g = routeGeo;
+      const p = toXY([lng, lat]);
+      let best = { dist: Infinity, i: 0, t: 0 };
+      for (let i = 0; i < g.pts.length - 1; i++) {
+        const [ax, ay] = g.pts[i], [bx, by] = g.pts[i + 1];
+        const dx = bx - ax, dy = by - ay;
+        const len2 = dx * dx + dy * dy;
+        const t = len2 ? Math.max(0, Math.min(1, ((p[0] - ax) * dx + (p[1] - ay) * dy) / len2)) : 0;
+        const d = Math.hypot(p[0] - (ax + t * dx), p[1] - (ay + t * dy));
+        if (d < best.dist) best = { dist: d, i, t };
+      }
+      const segLen = g.cum[best.i + 1] - g.cum[best.i];
+      const along = g.cum[best.i] + segLen * best.t;
+      const a = g.coords[best.i], b = g.coords[best.i + 1] || a;
+      const snapped = [a[0] + (b[0] - a[0]) * best.t, a[1] + (b[1] - a[1]) * best.t];
+      return {
+        offRoute_m: best.dist,
+        remaining_m: Math.max(0, g.total - along),
+        ahead: [snapped, ...g.coords.slice(best.i + 1)]
+      };
+    }
+
+    function metresBetween(a, b) {
+      const p = toXY(a), q = toXY(b);
+      return Math.hypot(p[0] - q[0], p[1] - q[1]);
+    }
+
+    // ---------- spoken turn-by-turn directions ----------
+    let navSteps = [];
+    let voiceOn = load('voice', ['on', 'off'], 'on') === 'on';
+
+    // How early to warn about a turn (metres), and when to say "turn now"
+    const ANNOUNCE = { drive: { far: 300, near: 60 }, cycle: { far: 150, near: 30 }, walk: { far: 80, near: 20 } };
+    const SPOKEN_TURNS = ['left', 'right', 'slight_left', 'slight_right', 'sharp_left', 'sharp_right', 'uturn', 'roundabout'];
+    const TURN_ANGLE = { straight: 0, depart: 0, roundabout: 0, arrive: 0, slight_right: 45, right: 90,
+                         sharp_right: 135, uturn: 180, slight_left: -45, left: -90, sharp_left: -135 };
+    const EXPRESSWAYS = ['PIE', 'AYE', 'CTE', 'ECP', 'KJE', 'BKE', 'SLE', 'TPE', 'KPE', 'MCE', 'NSC'];
+    const ABBREVIATIONS = {
+      AVE: 'Avenue', ST: 'Street', RD: 'Road', DR: 'Drive', CRES: 'Crescent', CTRL: 'Central',
+      NTH: 'North', STH: 'South', BT: 'Bukit', JLN: 'Jalan', LOR: 'Lorong', UPP: 'Upper', LWR: 'Lower',
+      PL: 'Place', CL: 'Close', TER: 'Terrace', BLVD: 'Boulevard', EXPY: 'Expressway', PKWY: 'Parkway',
+      HWY: 'Highway', HTS: 'Heights', GDN: 'Garden', GDNS: 'Gardens', PK: 'Park', SQ: 'Square',
+      LK: 'Link', MT: 'Mount', KG: 'Kampong', TG: 'Tanjong', BLK: 'Block'
+    };
+
+    // "BEDOK NTH AVE 1" -> "Bedok North Avenue 1"
+    function niceStreet(s) {
+      if (!s) return '';
+      return String(s).trim().split(/\s+/).map((w) => {
+        const up = w.toUpperCase().replace(/\.$/, '');
+        if (EXPRESSWAYS.includes(up)) return up;
+        if (ABBREVIATIONS[up]) return ABBREVIATIONS[up];
+        if (/\d/.test(w)) return up;
+        return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+      }).join(' ');
+    }
+
+    function classifyTurn(step) {
+      const s = String(step.text || step.turn || '').toLowerCase().replace(/-/g, ' ');
+      if (/arriv|destination/.test(s)) return 'arrive';
+      if (/u turn|uturn|make a u/.test(s)) return 'uturn';
+      if (/roundabout|rotary/.test(s)) return 'roundabout';
+      if (/^head\b|\bdepart/.test(s)) return 'depart';
+      const side = /\bleft\b/.test(s) ? 'left' : /\bright\b/.test(s) ? 'right' : null;
+      if (side) {
+        if (/sharp/.test(s)) return 'sharp_' + side;
+        if (/slight|bear|keep/.test(s)) return 'slight_' + side;
+        return side;
+      }
+      return 'straight';
+    }
+
+    function phraseFor(kind, street) {
+      const onto = street ? ' onto ' + street : '';
+      switch (kind) {
+        case 'left': return 'Turn left' + onto;
+        case 'right': return 'Turn right' + onto;
+        case 'slight_left': return 'Keep left' + onto;
+        case 'slight_right': return 'Keep right' + onto;
+        case 'sharp_left': return 'Make a sharp left' + onto;
+        case 'sharp_right': return 'Make a sharp right' + onto;
+        case 'uturn': return 'Make a U-turn' + onto;
+        case 'roundabout': return 'At the roundabout, continue' + onto;
+        case 'arrive': return 'Arrive at your destination';
+        case 'depart': return 'Head off' + (street ? ' on ' + street : '');
+        default: return 'Continue' + onto;
+      }
+    }
+
+    // Steps from OneMap, each placed at its distance along the route
+    function buildSteps(data) {
+      if (!routeGeo || routeGeo.total <= 0 || routeGeo.pts.length < 2) return [];
+      let steps = (data.steps || []).map((s) => {
+        const kind = classifyTurn(s);
+        const street = niceStreet(s.street);
+        let phrase = phraseFor(kind, street);
+        const head = /^head\s+(.+?)(\s+on\s+|$)/i.exec(s.text || '');
+        if (kind === 'depart' && head) phrase = 'Head ' + head[1].toLowerCase() + (street ? ' on ' + street : '');
+        return { kind, street, phrase, along: routeGeo.total - snapToRoute(s.lng, s.lat).remaining_m };
+      });
+      // No usable turns from OneMap: work them out from the shape of the route instead
+      if (!steps.some((s) => SPOKEN_TURNS.includes(s.kind))) steps = steps.concat(turnsFromShape());
+      return steps.sort((a, b) => a.along - b.along);
+    }
+
+    function turnsFromShape() {
+      const g = routeGeo, out = [];
+      const pointAt = (d) => {
+        d = Math.max(0, Math.min(g.total, d));
+        let i = 0;
+        while (i < g.cum.length - 2 && g.cum[i + 1] < d) i++;
+        const seg = (g.cum[i + 1] - g.cum[i]) || 1, t = (d - g.cum[i]) / seg;
+        return [g.pts[i][0] + (g.pts[i + 1][0] - g.pts[i][0]) * t, g.pts[i][1] + (g.pts[i + 1][1] - g.pts[i][1]) * t];
+      };
+      const bearing = (a, b) => Math.atan2(b[0] - a[0], b[1] - a[1]) * 180 / Math.PI;
+      let lastTurn = -Infinity;
+      for (let i = 1; i < g.pts.length - 1; i++) {
+        const d = g.cum[i];
+        if (d < 20 || d > g.total - 20 || d - lastTurn < 40) continue;
+        const delta = ((bearing(pointAt(d), pointAt(d + 20)) - bearing(pointAt(d - 20), pointAt(d)) + 540) % 360) - 180;
+        const a = Math.abs(delta);
+        if (a < 40) continue;
+        const side = delta > 0 ? 'right' : 'left';
+        const kind = a > 150 ? 'uturn' : a > 120 ? 'sharp_' + side : a < 60 ? 'slight_' + side : side;
+        out.push({ kind, street: '', phrase: phraseFor(kind, ''), along: d });
+        lastTurn = d;
+      }
+      return out;
+    }
+
+    function nextTurn() {
+      if (!progress || !routeGeo || !navSteps.length) return null;
+      const here = routeGeo.total - progress.remaining_m;
+      const step = navSteps.find((s) => SPOKEN_TURNS.includes(s.kind) && s.along > here + 3);
+      return step ? { step, dist: step.along - here } : null;
+    }
+
+    function spokenDistance(m) {
+      if (m < 200) return Math.max(10, Math.round(m / 10) * 10) + ' metres';
+      if (m < 1000) return Math.round(m / 50) * 50 + ' metres';
+      return (m / 1000).toFixed(1) + ' kilometres';
+    }
+
+    function lowerFirst(s) { return s.charAt(0).toLowerCase() + s.slice(1); }
+
+    function speak(text) {
+      if (!voiceOn || !text || !('speechSynthesis' in window)) return;
+      try {
+        const synth = window.speechSynthesis;
+        synth.cancel(); // say the newest instruction, never a backlog
+        // Expressway names are read letter by letter: "P I E"
+        const words = text.replace(new RegExp('\\b(' + EXPRESSWAYS.join('|') + ')\\b', 'g'), (x) => x.split('').join(' '));
+        const u = new SpeechSynthesisUtterance(words);
+        const voices = synth.getVoices();
+        const v = voices.find((x) => /^en[-_]SG/i.test(x.lang)) || voices.find((x) => /^en[-_]GB/i.test(x.lang))
+          || voices.find((x) => /^en/i.test(x.lang));
+        if (v) u.voice = v;
+        u.lang = v ? v.lang : 'en-GB';
+        synth.speak(u);
+      } catch (e) { /* no voice on this phone: the on-screen banner still shows the turn */ }
+    }
+
+    function stopSpeaking() {
+      try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+    }
+
+    // Called on every GPS update while riding
+    function announceTurns() {
+      if (!progress || progress.offRoute_m > 50) return;
+      const n = nextTurn();
+      if (!n) return;
+      const t = ANNOUNCE[mode];
+      if (n.dist <= t.near) {
+        if (!n.step.saidNear) { n.step.saidNear = n.step.saidFar = true; speak(n.step.phrase); }
+      } else if (n.dist <= t.far && !n.step.saidFar) {
+        n.step.saidFar = true;
+        speak('In ' + spokenDistance(n.dist) + ', ' + lowerFirst(n.step.phrase));
+      }
+    }
+
+    function toggleVoice() {
+      voiceOn = !voiceOn;
+      save('voice', voiceOn ? 'on' : 'off');
+      if (voiceOn) speak('Voice on'); else stopSpeaking();
+      showRideCard();
+    }
+
+    const ARROW_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V5M5 11l7-7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+    // Big "next turn" banner at the top of the ride card
+    function nextTurnBanner() {
+      const n = nextTurn();
+      const box = el('div', 'next');
+      const icon = el('div', 'next-icon');
+      icon.innerHTML = ARROW_SVG; // fixed icon, no user text
+      const kind = n ? n.step.kind : 'straight';
+      icon.style.transform = 'rotate(' + (TURN_ANGLE[kind] || 0) + 'deg)';
+      const words = el('div', 'next-words');
+      words.append(el('div', 'next-what', n ? n.step.phrase : 'Continue to your destination'));
+      if (n) words.append(el('div', 'next-dist', formatDistance(Math.max(10, Math.round(n.dist / 10) * 10))));
+      box.append(icon, words);
+      return box;
+    }
+
+    // ---------- live ride tracking ----------
+    function makeMeMarker() {
+      const wrap = el('div', 'me');
+      const rot = el('div', 'me-rot');
+      rot.appendChild(el('div', 'me-arrow'));
+      wrap.append(rot, el('div', 'me-dot'));
+      return new maplibregl.Marker({ element: wrap });
+    }
+
+    function startRide() {
+      if (!lastRoute || riding) return;
+      if (!('geolocation' in navigator)) {
+        showTrip([el('div', 'error', 'This browser cannot share your location.')]);
+        return;
+      }
+      riding = true;
+      following = true;
+      offRouteCount = 0;
+      lastRerouteAt = Date.now();
+      progress = null;
+      keepScreenOn();
+      showRideCard([el('div', 'sub', 'Waiting for GPS…')]);
+      // Speaking straight from the tap also unlocks the voice on iPhones
+      const first = navSteps.find((s) => s.kind === 'depart');
+      speak('Starting ride. ' + (first ? first.phrase : ''));
+      watchId = navigator.geolocation.watchPosition(onFix, onFixError,
+        { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
+    }
+
+    function stopRide() {
+      if (watchId != null) navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      riding = false;
+      lastFix = null;
+      progress = null;
+      if (meMarker) { meMarker.remove(); meMarker = null; }
+    }
+
+    function endRide() {
+      stopRide();
+      stopSpeaking();
+      shownCoords = null;
+      drawRoute();
+      showTrip();
+    }
+
+    function onFix(pos) {
+      if (!riding) return;
+      const c = pos.coords;
+      const here = [c.longitude, c.latitude];
+
+      // Direction of travel: from the phone if it knows, otherwise from the last two fixes
+      let heading = (c.heading != null && !Number.isNaN(c.heading) && (c.speed || 0) > 0.5) ? c.heading : null;
+      if (heading == null && lastFix && metresBetween([lastFix.lng, lastFix.lat], here) > 5) {
+        const p = toXY([lastFix.lng, lastFix.lat]), q = toXY(here);
+        heading = (Math.atan2(q[0] - p[0], q[1] - p[1]) * 180 / Math.PI + 360) % 360;
+      }
+      if (heading == null && lastFix) heading = lastFix.heading;
+      lastFix = { lat: c.latitude, lng: c.longitude, accuracy: c.accuracy || 0, heading, time: Date.now() };
+
+      if (!meMarker) meMarker = makeMeMarker().setLngLat(here).addTo(map);
+      else meMarker.setLngLat(here);
+      const rot = meMarker.getElement().querySelector('.me-rot');
+      rot.style.transform = 'rotate(' + (heading || 0) + 'deg)';
+      rot.style.opacity = heading == null ? '0' : '1';
+
+      // Arrived?
+      if (metresBetween(here, [end.lng, end.lat]) < 35) { arrived(); return; }
+
+      updateProgress(lastFix);
+      if (progress && progress.offRoute_m <= 50 && progress.remaining_m < 25) { arrived(); return; }
+
+      // Off the route for two updates in a row (and GPS is decent): get a new route from here
+      const gpsOk = lastFix.accuracy <= 50;
+      if (progress && gpsOk && progress.offRoute_m > 50) offRouteCount++;
+      else offRouteCount = 0;
+      if (offRouteCount >= 2 && Date.now() - lastRerouteAt > 15000) {
+        rerouteFromHere();
+        return;
+      }
+
+      announceTurns();
+
+      if (following) {
+        map.easeTo({
+          center: here,
+          zoom: Math.max(map.getZoom(), 16),
+          offset: [0, -Math.round(card.offsetHeight / 2)],
+          duration: 800
+        });
+      }
+      showRideCard();
+    }
+
+    function updateProgress(fix) {
+      if (!routeGeo || routeGeo.pts.length < 2) return;
+      const s = snapToRoute(fix.lng, fix.lat);
+      progress = s;
+      shownCoords = s.offRoute_m <= 50 ? s.ahead : null; // trim the line only when on it
+      drawRoute();
+    }
+
+    function rerouteFromHere() {
+      lastRerouteAt = Date.now();
+      offRouteCount = 0;
+      start = { name: 'My location', address: '', lat: lastFix.lat, lng: lastFix.lng };
+      if (startMarker) { startMarker.remove(); startMarker = null; }
+      speak('Rerouting.');
+      getRoute();
+    }
+
+    function onFixError(err) {
+      if (!riding) return;
+      if (err.code === 1) {
+        stopRide();
+        showTrip([el('div', 'error', 'Location is blocked. Allow location for this site in your browser settings, then tap Start ride again.')]);
+        return;
+      }
+      showRideCard([el('div', 'sub', 'GPS signal is weak. Still trying…')]);
+    }
+
+    function arrived() {
+      const place = end ? end.name : 'your destination';
+      stopRide();
+      shownCoords = [];
+      drawRoute();
+      const done = el('button', 'btn-go', 'Done');
+      done.addEventListener('click', clearRoute);
+      const row = el('div', 'row');
+      row.append(done);
+      showCard([el('div', 'summary', 'You have arrived'), el('div', 'sub', place), row]);
+      speak('You have arrived' + (end ? ' at ' + niceStreet(end.name) : '') + '.');
+      letScreenSleep();
+    }
+
+    // Stop following when the rider drags the map; "Re-centre" brings it back
+    map.on('dragstart', () => {
+      if (riding && following) { following = false; showRideCard(); }
+    });
+
+    function recentre() {
+      following = true;
+      if (lastFix) {
+        map.easeTo({ center: [lastFix.lng, lastFix.lat], zoom: Math.max(map.getZoom(), 16),
+          offset: [0, -Math.round(card.offsetHeight / 2)], duration: 600 });
+      }
+      showRideCard();
+    }
+
+    function arrivalClock(seconds) {
+      const t = new Date(Date.now() + seconds * 1000);
+      return t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    function showRideCard(extra = []) {
+      if (!riding) return;
+      const m = MODES[mode];
+      const parts = [];
+      if (progress) parts.push(nextTurnBanner());
+      parts.push(modeSwitch());
+      parts.push(tripLine(END_COLOUR, 'To', end));
+
+      if (progress && lastRoute && routeGeo && routeGeo.total > 0) {
+        // Share of the route still ahead, applied to OneMap's own distance and time
+        const share = Math.min(1, progress.remaining_m / routeGeo.total);
+        const metresLeft = (lastRoute.distance_m || routeGeo.total) * share;
+        const secondsLeft = (lastRoute.time_s || 0) * share;
+        const summary = el('div', 'summary');
+        summary.append(
+          document.createTextNode(formatDistance(Math.max(metresLeft, 1))),
+          el('small', null, '  ·  ' + formatTime(Math.max(secondsLeft, 60)) + ' left'));
+        parts.push(summary);
+        parts.push(el('div', 'sub', 'Arrive about ' + arrivalClock(secondsLeft) + ' ' + m.words));
+        if (progress.offRoute_m > 50) parts.push(el('div', 'sub', 'You are off the route'));
+      }
+      parts.push(...extra, el('div', 'wake'));
+
+      const row = el('div', 'row');
+      if (!following) {
+        const rc = el('button', 'btn-me', '◎ Re-centre');
+        rc.addEventListener('click', recentre);
+        row.append(rc);
+      }
+      const voice = el('button', 'btn-voice', voiceOn ? '🔊' : '🔇');
+      voice.setAttribute('aria-label', voiceOn ? 'Turn voice directions off' : 'Turn voice directions on');
+      voice.addEventListener('click', toggleVoice);
+      row.append(voice);
+      const stop = el('button', 'btn-end-ride', 'End ride');
+      stop.addEventListener('click', endRide);
+      row.append(stop);
+      parts.push(row);
+
+      showCard(parts);
+      updateWakeNote();
+    }
+
+    // ---------- "Install" banner: put the app on the home screen ----------
+    const installBox = document.getElementById('install');
+    const APP_NAME = document.title;           // follows the app name in <title>
+    let installPrompt = null;                  // Android / Chrome's own install prompt, when offered
+
+    function isInstalled() {
+      return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    }
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isPhone = isIOS || /android/i.test(navigator.userAgent);
+
+    function installSnoozed() {
+      try { return Date.now() < Number(localStorage.getItem('installHiddenUntil') || 0); } catch (e) { return false; }
+    }
+
+    function hideInstall(snoozeDays) {
+      installBox.hidden = true;
+      installBox.innerHTML = '';
+      if (snoozeDays) save('installHiddenUntil', String(Date.now() + snoozeDays * 24 * 60 * 60 * 1000));
+    }
+
+    function closeButton(snoozeDays) {
+      const close = el('button', 'install-close', '×');
+      close.type = 'button';
+      close.setAttribute('aria-label', 'Not now');
+      close.addEventListener('click', () => hideInstall(snoozeDays));
+      return close;
+    }
+
+    function showInstall() {
+      if (isInstalled() || installSnoozed()) return;
+      installBox.innerHTML = '';
+      const text = el('div', 'install-text');
+      text.append(el('strong', null, 'Get ' + APP_NAME), el('span', null, 'Add it to your home screen, free'));
+      const btn = el('button', 'install-btn', 'Install');
+      btn.type = 'button';
+      btn.addEventListener('click', onInstallClick);
+      installBox.append(text, btn, closeButton(7));
+      installBox.hidden = false;
+    }
+
+    async function onInstallClick() {
+      if (installPrompt) {
+        const prompt = installPrompt;
+        installPrompt = null;               // the phone allows each prompt to be used once
+        prompt.prompt();
+        try {
+          const choice = await prompt.userChoice;
+          if (choice && choice.outcome === 'accepted') hideInstall();
+        } catch (e) { /* ignore */ }
+        return;
+      }
+      showInstallSteps();
+    }
+
+    // iPhones (and browsers without a one-tap prompt): show the steps instead
+    function showInstallSteps() {
+      const steps = isIOS
+        ? ['Tap the Share button (square with an arrow) at the bottom of Safari.',
+           'Scroll down and tap “Add to Home Screen”.',
+           'Tap “Add”.']
+        : ['Tap the browser menu ⋮ (top or bottom right).',
+           'Tap “Install app” or “Add to Home screen”.',
+           'Tap “Install” or “Add” to confirm.'];
+      installBox.innerHTML = '';
+      const text = el('div', 'install-text');
+      text.append(el('strong', null, 'Add ' + APP_NAME + ' to your home screen'));
+      const list = el('ol', 'install-steps');
+      steps.forEach((s) => list.appendChild(el('li', null, s)));
+      const ok = el('button', 'install-btn', 'Got it');
+      ok.type = 'button';
+      ok.addEventListener('click', () => hideInstall(30));
+      installBox.append(text, closeButton(7), list, ok);
+      installBox.hidden = false;
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();                   // show our own button instead of the browser's mini bar
+      installPrompt = e;
+      showInstall();
+    });
+
+    window.addEventListener('appinstalled', () => {
+      installPrompt = null;
+      hideInstall();
+      showToast(APP_NAME + ' is on your home screen');
+    });
+
+    // Phones that never offer a one-tap prompt (iPhone, some browsers): still offer the button
+    setTimeout(() => { if (!installPrompt && isPhone && installBox.hidden) showInstall(); }, 3000);
+
+    // ---------- install as an app ----------
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => { /* app still works without it */ });
+      });
+    }
+  </script>
+</body>
+</html>
