@@ -95,7 +95,7 @@ async function searchPhoton(query, lat, lng) {
     + '&limit=15&lang=en&bbox=103.59,1.15,104.10,1.48';
   if (lat != null && lng != null) url += '&lat=' + lat + '&lon=' + lng;
   const resp = await fetchWithTimeout(url, {
-    headers: { 'User-Agent': 'RiderMapSG/1.0 (+https://rider-map-theta.vercel.app)' }
+    headers: { 'User-Agent': 'AskGoWhere/1.0 (+https://rider-map-theta.vercel.app)' }
   });
   if (!resp.ok) throw new Error('Business search failed (status ' + resp.status + ')');
   const data = await resp.json();

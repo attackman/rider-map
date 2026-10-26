@@ -1,6 +1,6 @@
 {
-  "name": "Rider Map SG",
-  "short_name": "Rider Map",
+  "name": "AskGoWhere",
+  "short_name": "AskGoWhere",
   "description": "Search places and get cycling, driving and walking routes in Singapore.",
   "id": "/",
   "start_url": "/",

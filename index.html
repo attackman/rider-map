@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0b5fff" />
-  <title>Rider Map SG</title>
+  <title>AskGoWhere</title>
 
   <!-- Install as an app -->
   <link rel="manifest" href="/manifest.webmanifest" />
@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="Rider Map" />
+  <meta name="apple-mobile-web-app-title" content="AskGoWhere" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@^6.15.0/dist/maplibre-gl.css" />
@@ -87,6 +87,26 @@
       max-height: 55vh; overflow-y: auto;
     }
     .results:empty { display: none; }
+
+    /* "Install app" banner under the search bar */
+    .install {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+      background: var(--panel); color: var(--text); border-radius: 14px;
+      padding: 8px 6px 8px 14px; box-shadow: var(--shadow); border: 1px solid var(--edge);
+    }
+    .install[hidden] { display: none; }
+    .install-text { flex: 1; min-width: 0; font-size: 15px; line-height: 1.35; }
+    .install-text strong { display: block; font-size: 16px; }
+    .install-text span { color: var(--muted); font-size: 14px; }
+    .install-btn {
+      border: 0; border-radius: 12px; min-height: 46px; padding: 0 18px;
+      background: #0b5fff; color: #ffffff; font-size: 16px; font-weight: 700; cursor: pointer;
+    }
+    .install-close {
+      border: 0; background: transparent; color: var(--muted);
+      width: 44px; height: 46px; font-size: 24px; cursor: pointer;
+    }
+    .install-steps { flex-basis: 100%; margin: 2px 0 4px; padding-left: 22px; font-size: 15px; line-height: 1.5; }
     .results li { padding: 14px 16px; min-height: 28px; border-bottom: 1px solid var(--line); cursor: pointer; }
     .results li:last-child { border-bottom: 0; }
     .results li:active { background: var(--chip); }
@@ -210,6 +230,7 @@
       <button id="theme" class="icon-btn" type="button" aria-label="Change light or dark mode"></button>
       <button id="clear" class="icon-btn" type="button" aria-label="Clear search">×</button>
     </div>
+    <div id="install" class="install" hidden></div>
     <ul id="results" class="results"></ul>
   </div>
 
@@ -1258,6 +1279,98 @@
       showCard(parts);
       updateWakeNote();
     }
+
+    // ---------- "Install" banner: put the app on the home screen ----------
+    const installBox = document.getElementById('install');
+    const APP_NAME = document.title;           // follows the app name in <title>
+    let installPrompt = null;                  // Android / Chrome's own install prompt, when offered
+
+    function isInstalled() {
+      return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    }
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isPhone = isIOS || /android/i.test(navigator.userAgent);
+
+    function installSnoozed() {
+      try { return Date.now() < Number(localStorage.getItem('installHiddenUntil') || 0); } catch (e) { return false; }
+    }
+
+    function hideInstall(snoozeDays) {
+      installBox.hidden = true;
+      installBox.innerHTML = '';
+      if (snoozeDays) save('installHiddenUntil', String(Date.now() + snoozeDays * 24 * 60 * 60 * 1000));
+    }
+
+    function closeButton(snoozeDays) {
+      const close = el('button', 'install-close', '×');
+      close.type = 'button';
+      close.setAttribute('aria-label', 'Not now');
+      close.addEventListener('click', () => hideInstall(snoozeDays));
+      return close;
+    }
+
+    function showInstall() {
+      if (isInstalled() || installSnoozed()) return;
+      installBox.innerHTML = '';
+      const text = el('div', 'install-text');
+      text.append(el('strong', null, 'Get ' + APP_NAME), el('span', null, 'Add it to your home screen, free'));
+      const btn = el('button', 'install-btn', 'Install');
+      btn.type = 'button';
+      btn.addEventListener('click', onInstallClick);
+      installBox.append(text, btn, closeButton(7));
+      installBox.hidden = false;
+    }
+
+    async function onInstallClick() {
+      if (installPrompt) {
+        const prompt = installPrompt;
+        installPrompt = null;               // the phone allows each prompt to be used once
+        prompt.prompt();
+        try {
+          const choice = await prompt.userChoice;
+          if (choice && choice.outcome === 'accepted') hideInstall();
+        } catch (e) { /* ignore */ }
+        return;
+      }
+      showInstallSteps();
+    }
+
+    // iPhones (and browsers without a one-tap prompt): show the steps instead
+    function showInstallSteps() {
+      const steps = isIOS
+        ? ['Tap the Share button (square with an arrow) at the bottom of Safari.',
+           'Scroll down and tap “Add to Home Screen”.',
+           'Tap “Add”.']
+        : ['Tap the browser menu ⋮ (top or bottom right).',
+           'Tap “Install app” or “Add to Home screen”.',
+           'Tap “Install” or “Add” to confirm.'];
+      installBox.innerHTML = '';
+      const text = el('div', 'install-text');
+      text.append(el('strong', null, 'Add ' + APP_NAME + ' to your home screen'));
+      const list = el('ol', 'install-steps');
+      steps.forEach((s) => list.appendChild(el('li', null, s)));
+      const ok = el('button', 'install-btn', 'Got it');
+      ok.type = 'button';
+      ok.addEventListener('click', () => hideInstall(30));
+      installBox.append(text, closeButton(7), list, ok);
+      installBox.hidden = false;
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();                   // show our own button instead of the browser's mini bar
+      installPrompt = e;
+      showInstall();
+    });
+
+    window.addEventListener('appinstalled', () => {
+      installPrompt = null;
+      hideInstall();
+      showToast(APP_NAME + ' is on your home screen');
+    });
+
+    // Phones that never offer a one-tap prompt (iPhone, some browsers): still offer the button
+    setTimeout(() => { if (!installPrompt && isPhone && installBox.hidden) showInstall(); }, 3000);
 
     // ---------- install as an app ----------
     if ('serviceWorker' in navigator) {

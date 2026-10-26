@@ -1,10 +1,10 @@
-// Service worker: makes Rider Map SG installable and open fast.
+// Service worker: makes AskGoWhere installable and open fast.
 // - The page itself: always try the network first, so new versions show up
 //   straight away; fall back to the saved copy when offline.
 // - App files (icons, map library): use the saved copy, refresh it in the background.
 // - Search and routes (/api/...) and map tiles: never saved, always live.
 
-const CACHE = 'rider-map-v1';
+const CACHE = 'askgowhere-v2';
 const APP_FILES = [
   '/',
   '/manifest.webmanifest',

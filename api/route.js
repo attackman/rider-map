@@ -73,6 +73,34 @@ function decodeRoute(str) {
   return null;
 }
 
+// Turn-by-turn steps from OneMap's route_instructions. Each instruction looks like
+//   ["Left", "THOMSON ROAD", 34, "1.32505,103.841685", 11, "34m", "East", "North", "driving",
+//    "Head East On Thomson Road"]
+// The fields are found by what they look like rather than by position, so a small change
+// in OneMap's format does not break directions.
+function parseSteps(instructions) {
+  if (!Array.isArray(instructions)) return [];
+  const steps = [];
+  for (const inst of instructions) {
+    if (!Array.isArray(inst)) continue;
+    const point = inst.find((x) => typeof x === 'string' && /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(x.trim()));
+    if (!point) continue;
+    const [lat, lng] = point.split(',').map(Number);
+    if (!inSingapore([lng, lat])) continue;
+    const strings = inst.filter((x) => typeof x === 'string');
+    const text = strings.length ? strings[strings.length - 1] : '';
+    const street = typeof inst[1] === 'string' && inst[1] !== point ? inst[1] : '';
+    steps.push({
+      text: text.slice(0, 200),
+      turn: typeof inst[0] === 'string' ? inst[0].slice(0, 40) : '',
+      street: street.slice(0, 100),
+      lat,
+      lng
+    });
+  }
+  return steps.slice(0, 300);
+}
+
 function parsePoint(text) {
   const parts = String(text || '').split(',').map(Number);
   if (parts.length !== 2 || !parts.every(Number.isFinite)) return null;
@@ -122,7 +150,8 @@ module.exports = async (req, res) => {
       type,
       distance_m: Number(summary.total_distance) || null,
       time_s: Number(summary.total_time) || null,
-      coordinates: coords
+      coordinates: coords,
+      steps: parseSteps(data.route_instructions)
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
