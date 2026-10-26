@@ -37,16 +37,16 @@
     }
     :root[data-theme="dark"] {
       --panel: #1b1f26;
-      --text: #f2f4f7;
-      --muted: #a9b1bd;
+      --text: #ffffff;
+      --muted: #dde2ea;
       --line: #2c323c;
       --chip: #2a303a;
-      --chip-text: #e6e9ee;
-      --accent: #6ea0ff;
-      --start-bg: #1d3a24; --start-text: #8fe0a2;
-      --end-bg: #3d1f22;   --end-text: #ff9b9b;
-      --me-bg: #1f3050;    --me-text: #9cc0ff;
-      --error: #ff9b9b;
+      --chip-text: #ffffff;
+      --accent: #9cc2ff;
+      --start-bg: #1d3a24; --start-text: #b4f0c2;
+      --end-bg: #3d1f22;   --end-text: #ffc2c2;
+      --me-bg: #1f3050;    --me-text: #c4dbff;
+      --error: #ffc2c2;
       --shadow: 0 2px 14px rgba(0,0,0,.6);
       --map-bg: #1a1d21;
       --seg-on: #3d4553;
@@ -258,7 +258,20 @@
       map.addLayer({ id: 'route-line', type: 'line', source: 'route',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': lineColour(), 'line-width': 7 } });
+      if (theme === 'dark') brightenMapLabels();
     });
+
+    // The dark map's street and place names are dim; make them near-white with a dark outline
+    function brightenMapLabels() {
+      try {
+        for (const layer of map.getStyle().layers) {
+          if (layer.type !== 'symbol' || !layer.layout || !layer.layout['text-field']) continue;
+          map.setPaintProperty(layer.id, 'text-color', '#f4f6fa');
+          map.setPaintProperty(layer.id, 'text-halo-color', '#0e1116');
+          map.setPaintProperty(layer.id, 'text-halo-width', 1.6);
+        }
+      } catch (e) { /* keep the map's own label colours if anything goes wrong */ }
+    }
 
     function routeFeature() {
       return { type: 'Feature', geometry: { type: 'LineString', coordinates: lastRoute ? lastRoute.coordinates : [] } };
