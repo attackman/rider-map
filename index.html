@@ -75,6 +75,7 @@
       padding: 12px 0; background: transparent; color: var(--text);
     }
     .search-box input::placeholder { color: var(--muted); }
+    .search-box input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
     .icon-btn {
       flex: none; border: 0; background: var(--chip); color: var(--chip-text);
       width: 48px; height: 48px; border-radius: 12px;
@@ -92,6 +93,10 @@
     .results .name { font-weight: 600; font-size: 16px; color: var(--text); }
     .results .addr { font-size: 14px; color: var(--muted); margin-top: 3px; }
     .results .msg { color: var(--muted); cursor: default; }
+    .results .tag {
+      display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 10px;
+      background: var(--chip); color: var(--chip-text); font-size: 12px; font-weight: 600;
+    }
 
     /* ---------- floating "start from my location" ---------- */
     .locate {
@@ -249,8 +254,119 @@
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
+    // ---------- shops, malls, food places and businesses on the map ----------
+    // Uses the place data already inside the free map tiles (OpenStreetMap).
+    const CLS = ['coalesce', ['get', 'class'], ''];
+    const SUB = ['coalesce', ['get', 'subclass'], ''];
+    const MALLS = ['mall', 'department_store', 'marketplace'];
+    const FOOD = ['fast_food', 'restaurant', 'cafe', 'food_court', 'ice_cream', 'bakery',
+                  'bar', 'pub', 'beer', 'biergarten', 'confectionery', 'deli', 'bubble_tea'];
+    const SHOPS = ['shop', 'grocery', 'clothing_store', 'alcohol_shop', 'jewelry', 'supermarket',
+                   'convenience', 'mobile_phone', 'electronics', 'hardware', 'furniture', 'books',
+                   'shoes', 'beauty', 'optician', 'florist', 'gift', 'toys', 'sports', 'bicycle'];
+    const SERVICES = ['bank', 'atm', 'pharmacy', 'chemist', 'fuel', 'laundry', 'post', 'car',
+                      'hairdresser', 'clinic', 'doctors', 'dentist', 'money_transfer', 'car_repair'];
+    const TRANSIT = ['bus', 'rail', 'railway', 'airport', 'aerialway', 'entrance'];
+    const KIND = ['case',
+      ['in', SUB, ['literal', MALLS]], 'mall',
+      ['any', ['in', CLS, ['literal', FOOD]], ['in', SUB, ['literal', FOOD]]], 'food',
+      ['any', ['in', CLS, ['literal', SHOPS]], ['in', SUB, ['literal', SHOPS]]], 'shop',
+      ['any', ['in', CLS, ['literal', SERVICES]], ['in', SUB, ['literal', SERVICES]]], 'service',
+      'other'];
+    const POI_NAME = ['coalesce', ['get', 'name:en'], ['get', 'name_en'], ['get', 'name']];
+    const POI_BASE = ['all',
+      ['match', ['geometry-type'], ['Point', 'MultiPoint'], true, false],
+      ['!', ['in', CLS, ['literal', TRANSIT]]],
+      ['has', 'name']];
+    const POI_GROUPS = [
+      // id,     which kinds,                    dot from zoom, name from zoom, dot size
+      { id: 'mall',  kinds: ['mall'],                     dotZoom: 13, nameZoom: 14, radius: 7 },
+      { id: 'biz',   kinds: ['food', 'shop', 'service'],  dotZoom: 15, nameZoom: 16, radius: 5.5 },
+      { id: 'other', kinds: ['other'],                    dotZoom: 16, nameZoom: 17, radius: 4 }
+    ];
+    const POI_LAYERS = POI_GROUPS.flatMap((g) => ['poi-' + g.id + '-dot', 'poi-' + g.id + '-name']);
+    const KIND_COLOURS = ['match', KIND,
+      'mall', '#e0457b', 'food', '#f08c1a', 'shop', '#7b61ff', 'service', '#14a38b', '#8a94a6'];
+    const KIND_TEXT = ['match', KIND,
+      'mall', '#a8204f', 'food', '#a65800', 'shop', '#4a2fc4', 'service', '#0b6e5d', '#4b5466'];
+
+    const POI_NAMES = {
+      mall: 'Shopping centre', department_store: 'Department store', marketplace: 'Market',
+      supermarket: 'Supermarket', convenience: 'Convenience store', grocery: 'Grocery',
+      fast_food: 'Fast food', food_court: 'Food court / hawker', restaurant: 'Restaurant',
+      cafe: 'Cafe', bakery: 'Bakery', bubble_tea: 'Bubble tea', pharmacy: 'Pharmacy',
+      chemist: 'Pharmacy', bank: 'Bank', atm: 'ATM', fuel: 'Petrol station', clinic: 'Clinic',
+      doctors: 'Clinic', clothing_store: 'Clothing', mobile_phone: 'Phone shop'
+    };
+    function poiCategory(props) {
+      const key = POI_NAMES[props.subclass] ? props.subclass : props.class;
+      if (POI_NAMES[key]) return POI_NAMES[key];
+      const words = String(props.subclass || props.class || 'place').replace(/_/g, ' ');
+      return words.charAt(0).toUpperCase() + words.slice(1);
+    }
+
+    function addShopLayers() {
+      // Hide the map style's own place icons (we draw our own, in both light and dark)
+      for (const layer of map.getStyle().layers) {
+        if (layer['source-layer'] === 'poi' && layer.id !== 'poi_transit' && !layer.id.startsWith('poi-')) {
+          map.setLayoutProperty(layer.id, 'visibility', 'none');
+        }
+      }
+      for (const g of POI_GROUPS) {
+        const filter = ['all', POI_BASE, ['in', KIND, ['literal', g.kinds]]];
+        map.addLayer({
+          id: 'poi-' + g.id + '-dot', type: 'circle', source: 'openmaptiles', 'source-layer': 'poi',
+          minzoom: g.dotZoom, filter,
+          paint: {
+            'circle-radius': g.radius,
+            'circle-color': KIND_COLOURS,
+            'circle-stroke-width': 1.5,
+            'circle-stroke-color': theme === 'dark' ? '#1b1f26' : '#ffffff'
+          }
+        });
+        map.addLayer({
+          id: 'poi-' + g.id + '-name', type: 'symbol', source: 'openmaptiles', 'source-layer': 'poi',
+          minzoom: g.nameZoom, filter,
+          layout: {
+            'text-field': POI_NAME,
+            'text-font': ['Noto Sans Regular'],
+            'text-size': g.id === 'mall' ? 13 : 12,
+            'text-anchor': 'top',
+            'text-offset': [0, 0.8],
+            'text-max-width': 8,
+            'symbol-sort-key': ['coalesce', ['get', 'rank'], 99]
+          },
+          paint: {
+            'text-color': KIND_TEXT,
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 1.4
+          }
+        });
+      }
+    }
+
+    // Tap a shop dot or name to get "Start here / Go here"
+    map.on('click', (e) => {
+      const layers = POI_LAYERS.filter((id) => map.getLayer(id));
+      if (!layers.length) return;
+      const p = e.point;
+      const found = map.queryRenderedFeatures([[p.x - 20, p.y - 20], [p.x + 20, p.y + 20]], { layers });
+      let best = null, bestDistance = Infinity;
+      for (const f of found) {
+        const props = f.properties || {};
+        const name = props['name:en'] || props.name_en || props.name;
+        if (!name || !f.geometry) continue;
+        const c = f.geometry.type === 'MultiPoint' ? f.geometry.coordinates[0] : f.geometry.coordinates;
+        const px = map.project(c);
+        const d = Math.hypot(px.x - p.x, px.y - p.y);
+        if (d < bestDistance) { bestDistance = d; best = { name, address: poiCategory(props), lng: c[0], lat: c[1] }; }
+      }
+      if (best) choose(best);
+    });
+
     // Runs on first load and again after every light/dark switch
     map.on('style.load', () => {
+      try { addShopLayers(); } catch (e) { /* map still works without the shop layer */ }
       map.addSource('route', { type: 'geojson', data: routeFeature() });
       map.addLayer({ id: 'route-casing', type: 'line', source: 'route',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -432,7 +548,10 @@
       if (!results.length) { showMessage('No places found'); return; }
       for (const r of results) {
         const li = el('li');
-        li.append(el('div', 'name', r.name), el('div', 'addr', r.address));
+        const addr = el('div', 'addr');
+        if (r.category) addr.append(el('span', 'tag', r.category));
+        addr.append(document.createTextNode(r.address || ''));
+        li.append(el('div', 'name', r.name), addr);
         li.addEventListener('click', () => choose(r));
         list.appendChild(li);
       }
@@ -442,7 +561,10 @@
       lastQuery = q;
       showMessage('Searching…');
       try {
-        const data = await getJson('/api/search?q=' + encodeURIComponent(q));
+        // Send the middle of the map so nearby shops come first
+        const c = map.getCenter();
+        const data = await getJson('/api/search?q=' + encodeURIComponent(q)
+          + '&lat=' + c.lat.toFixed(2) + '&lng=' + c.lng.toFixed(2));
         if (q !== lastQuery) return;
         showResults(data.results || []);
       } catch (e) {
@@ -480,7 +602,7 @@
       picked = r;
       if (pickedMarker) pickedMarker.remove();
       pickedMarker = new maplibregl.Marker({ color: '#0b5fff' }).setLngLat([r.lng, r.lat]).addTo(map);
-      map.flyTo({ center: [r.lng, r.lat], zoom: 16 });
+      map.flyTo({ center: [r.lng, r.lat], zoom: Math.max(map.getZoom(), 16) });
 
       const startBtn = el('button', 'btn-start', 'Start here');
       const endBtn = el('button', 'btn-end', 'Go here');
