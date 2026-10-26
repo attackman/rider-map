@@ -156,6 +156,19 @@
     .btn-go       { background: #1b9e3e; color: #ffffff; }
     .btn-end-ride { background: var(--end-bg); color: var(--end-text); }
 
+    .card .row .btn-voice { flex: 0 0 64px; background: var(--chip); color: var(--chip-text); font-size: 24px; }
+
+    /* Next-turn banner while riding */
+    .next {
+      display: flex; align-items: center; gap: 12px;
+      background: #0b5fff; color: #ffffff; border-radius: 14px; padding: 10px 14px; margin-bottom: 12px;
+    }
+    :root[data-theme="dark"] .next { background: #2f5fcf; }
+    .next-icon { flex: none; width: 44px; height: 44px; transition: transform .3s; }
+    .next-icon svg { width: 44px; height: 44px; display: block; }
+    .next-what { font-size: 19px; font-weight: 800; line-height: 1.25; }
+    .next-dist { font-size: 16px; font-weight: 600; opacity: .92; margin-top: 2px; }
+
     /* The rider's moving dot with a direction arrow */
     .me { width: 30px; height: 30px; position: relative; }
     .me-dot {
@@ -795,6 +808,7 @@
         lastRoute = data;
         shownCoords = null;
         routeGeo = measureRoute(data.coordinates);
+        navSteps = buildSteps(data);
         drawRoute();
         keepScreenOn();
 
@@ -872,6 +886,183 @@
       return Math.hypot(p[0] - q[0], p[1] - q[1]);
     }
 
+    // ---------- spoken turn-by-turn directions ----------
+    let navSteps = [];
+    let voiceOn = load('voice', ['on', 'off'], 'on') === 'on';
+
+    // How early to warn about a turn (metres), and when to say "turn now"
+    const ANNOUNCE = { drive: { far: 300, near: 60 }, cycle: { far: 150, near: 30 }, walk: { far: 80, near: 20 } };
+    const SPOKEN_TURNS = ['left', 'right', 'slight_left', 'slight_right', 'sharp_left', 'sharp_right', 'uturn', 'roundabout'];
+    const TURN_ANGLE = { straight: 0, depart: 0, roundabout: 0, arrive: 0, slight_right: 45, right: 90,
+                         sharp_right: 135, uturn: 180, slight_left: -45, left: -90, sharp_left: -135 };
+    const EXPRESSWAYS = ['PIE', 'AYE', 'CTE', 'ECP', 'KJE', 'BKE', 'SLE', 'TPE', 'KPE', 'MCE', 'NSC'];
+    const ABBREVIATIONS = {
+      AVE: 'Avenue', ST: 'Street', RD: 'Road', DR: 'Drive', CRES: 'Crescent', CTRL: 'Central',
+      NTH: 'North', STH: 'South', BT: 'Bukit', JLN: 'Jalan', LOR: 'Lorong', UPP: 'Upper', LWR: 'Lower',
+      PL: 'Place', CL: 'Close', TER: 'Terrace', BLVD: 'Boulevard', EXPY: 'Expressway', PKWY: 'Parkway',
+      HWY: 'Highway', HTS: 'Heights', GDN: 'Garden', GDNS: 'Gardens', PK: 'Park', SQ: 'Square',
+      LK: 'Link', MT: 'Mount', KG: 'Kampong', TG: 'Tanjong', BLK: 'Block'
+    };
+
+    // "BEDOK NTH AVE 1" -> "Bedok North Avenue 1"
+    function niceStreet(s) {
+      if (!s) return '';
+      return String(s).trim().split(/\s+/).map((w) => {
+        const up = w.toUpperCase().replace(/\.$/, '');
+        if (EXPRESSWAYS.includes(up)) return up;
+        if (ABBREVIATIONS[up]) return ABBREVIATIONS[up];
+        if (/\d/.test(w)) return up;
+        return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+      }).join(' ');
+    }
+
+    function classifyTurn(step) {
+      const s = String(step.text || step.turn || '').toLowerCase().replace(/-/g, ' ');
+      if (/arriv|destination/.test(s)) return 'arrive';
+      if (/u turn|uturn|make a u/.test(s)) return 'uturn';
+      if (/roundabout|rotary/.test(s)) return 'roundabout';
+      if (/^head\b|\bdepart/.test(s)) return 'depart';
+      const side = /\bleft\b/.test(s) ? 'left' : /\bright\b/.test(s) ? 'right' : null;
+      if (side) {
+        if (/sharp/.test(s)) return 'sharp_' + side;
+        if (/slight|bear|keep/.test(s)) return 'slight_' + side;
+        return side;
+      }
+      return 'straight';
+    }
+
+    function phraseFor(kind, street) {
+      const onto = street ? ' onto ' + street : '';
+      switch (kind) {
+        case 'left': return 'Turn left' + onto;
+        case 'right': return 'Turn right' + onto;
+        case 'slight_left': return 'Keep left' + onto;
+        case 'slight_right': return 'Keep right' + onto;
+        case 'sharp_left': return 'Make a sharp left' + onto;
+        case 'sharp_right': return 'Make a sharp right' + onto;
+        case 'uturn': return 'Make a U-turn' + onto;
+        case 'roundabout': return 'At the roundabout, continue' + onto;
+        case 'arrive': return 'Arrive at your destination';
+        case 'depart': return 'Head off' + (street ? ' on ' + street : '');
+        default: return 'Continue' + onto;
+      }
+    }
+
+    // Steps from OneMap, each placed at its distance along the route
+    function buildSteps(data) {
+      if (!routeGeo || routeGeo.total <= 0 || routeGeo.pts.length < 2) return [];
+      let steps = (data.steps || []).map((s) => {
+        const kind = classifyTurn(s);
+        const street = niceStreet(s.street);
+        let phrase = phraseFor(kind, street);
+        const head = /^head\s+(.+?)(\s+on\s+|$)/i.exec(s.text || '');
+        if (kind === 'depart' && head) phrase = 'Head ' + head[1].toLowerCase() + (street ? ' on ' + street : '');
+        return { kind, street, phrase, along: routeGeo.total - snapToRoute(s.lng, s.lat).remaining_m };
+      });
+      // No usable turns from OneMap: work them out from the shape of the route instead
+      if (!steps.some((s) => SPOKEN_TURNS.includes(s.kind))) steps = steps.concat(turnsFromShape());
+      return steps.sort((a, b) => a.along - b.along);
+    }
+
+    function turnsFromShape() {
+      const g = routeGeo, out = [];
+      const pointAt = (d) => {
+        d = Math.max(0, Math.min(g.total, d));
+        let i = 0;
+        while (i < g.cum.length - 2 && g.cum[i + 1] < d) i++;
+        const seg = (g.cum[i + 1] - g.cum[i]) || 1, t = (d - g.cum[i]) / seg;
+        return [g.pts[i][0] + (g.pts[i + 1][0] - g.pts[i][0]) * t, g.pts[i][1] + (g.pts[i + 1][1] - g.pts[i][1]) * t];
+      };
+      const bearing = (a, b) => Math.atan2(b[0] - a[0], b[1] - a[1]) * 180 / Math.PI;
+      let lastTurn = -Infinity;
+      for (let i = 1; i < g.pts.length - 1; i++) {
+        const d = g.cum[i];
+        if (d < 20 || d > g.total - 20 || d - lastTurn < 40) continue;
+        const delta = ((bearing(pointAt(d), pointAt(d + 20)) - bearing(pointAt(d - 20), pointAt(d)) + 540) % 360) - 180;
+        const a = Math.abs(delta);
+        if (a < 40) continue;
+        const side = delta > 0 ? 'right' : 'left';
+        const kind = a > 150 ? 'uturn' : a > 120 ? 'sharp_' + side : a < 60 ? 'slight_' + side : side;
+        out.push({ kind, street: '', phrase: phraseFor(kind, ''), along: d });
+        lastTurn = d;
+      }
+      return out;
+    }
+
+    function nextTurn() {
+      if (!progress || !routeGeo || !navSteps.length) return null;
+      const here = routeGeo.total - progress.remaining_m;
+      const step = navSteps.find((s) => SPOKEN_TURNS.includes(s.kind) && s.along > here + 3);
+      return step ? { step, dist: step.along - here } : null;
+    }
+
+    function spokenDistance(m) {
+      if (m < 200) return Math.max(10, Math.round(m / 10) * 10) + ' metres';
+      if (m < 1000) return Math.round(m / 50) * 50 + ' metres';
+      return (m / 1000).toFixed(1) + ' kilometres';
+    }
+
+    function lowerFirst(s) { return s.charAt(0).toLowerCase() + s.slice(1); }
+
+    function speak(text) {
+      if (!voiceOn || !text || !('speechSynthesis' in window)) return;
+      try {
+        const synth = window.speechSynthesis;
+        synth.cancel(); // say the newest instruction, never a backlog
+        // Expressway names are read letter by letter: "P I E"
+        const words = text.replace(new RegExp('\\b(' + EXPRESSWAYS.join('|') + ')\\b', 'g'), (x) => x.split('').join(' '));
+        const u = new SpeechSynthesisUtterance(words);
+        const voices = synth.getVoices();
+        const v = voices.find((x) => /^en[-_]SG/i.test(x.lang)) || voices.find((x) => /^en[-_]GB/i.test(x.lang))
+          || voices.find((x) => /^en/i.test(x.lang));
+        if (v) u.voice = v;
+        u.lang = v ? v.lang : 'en-GB';
+        synth.speak(u);
+      } catch (e) { /* no voice on this phone: the on-screen banner still shows the turn */ }
+    }
+
+    function stopSpeaking() {
+      try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+    }
+
+    // Called on every GPS update while riding
+    function announceTurns() {
+      if (!progress || progress.offRoute_m > 50) return;
+      const n = nextTurn();
+      if (!n) return;
+      const t = ANNOUNCE[mode];
+      if (n.dist <= t.near) {
+        if (!n.step.saidNear) { n.step.saidNear = n.step.saidFar = true; speak(n.step.phrase); }
+      } else if (n.dist <= t.far && !n.step.saidFar) {
+        n.step.saidFar = true;
+        speak('In ' + spokenDistance(n.dist) + ', ' + lowerFirst(n.step.phrase));
+      }
+    }
+
+    function toggleVoice() {
+      voiceOn = !voiceOn;
+      save('voice', voiceOn ? 'on' : 'off');
+      if (voiceOn) speak('Voice on'); else stopSpeaking();
+      showRideCard();
+    }
+
+    const ARROW_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V5M5 11l7-7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+    // Big "next turn" banner at the top of the ride card
+    function nextTurnBanner() {
+      const n = nextTurn();
+      const box = el('div', 'next');
+      const icon = el('div', 'next-icon');
+      icon.innerHTML = ARROW_SVG; // fixed icon, no user text
+      const kind = n ? n.step.kind : 'straight';
+      icon.style.transform = 'rotate(' + (TURN_ANGLE[kind] || 0) + 'deg)';
+      const words = el('div', 'next-words');
+      words.append(el('div', 'next-what', n ? n.step.phrase : 'Continue to your destination'));
+      if (n) words.append(el('div', 'next-dist', formatDistance(Math.max(10, Math.round(n.dist / 10) * 10))));
+      box.append(icon, words);
+      return box;
+    }
+
     // ---------- live ride tracking ----------
     function makeMeMarker() {
       const wrap = el('div', 'me');
@@ -894,6 +1085,9 @@
       progress = null;
       keepScreenOn();
       showRideCard([el('div', 'sub', 'Waiting for GPS…')]);
+      // Speaking straight from the tap also unlocks the voice on iPhones
+      const first = navSteps.find((s) => s.kind === 'depart');
+      speak('Starting ride. ' + (first ? first.phrase : ''));
       watchId = navigator.geolocation.watchPosition(onFix, onFixError,
         { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
     }
@@ -909,6 +1103,7 @@
 
     function endRide() {
       stopRide();
+      stopSpeaking();
       shownCoords = null;
       drawRoute();
       showTrip();
@@ -949,6 +1144,8 @@
         return;
       }
 
+      announceTurns();
+
       if (following) {
         map.easeTo({
           center: here,
@@ -973,6 +1170,7 @@
       offRouteCount = 0;
       start = { name: 'My location', address: '', lat: lastFix.lat, lng: lastFix.lng };
       if (startMarker) { startMarker.remove(); startMarker = null; }
+      speak('Rerouting.');
       getRoute();
     }
 
@@ -996,6 +1194,7 @@
       const row = el('div', 'row');
       row.append(done);
       showCard([el('div', 'summary', 'You have arrived'), el('div', 'sub', place), row]);
+      speak('You have arrived' + (end ? ' at ' + niceStreet(end.name) : '') + '.');
       letScreenSleep();
     }
 
@@ -1021,7 +1220,9 @@
     function showRideCard(extra = []) {
       if (!riding) return;
       const m = MODES[mode];
-      const parts = [modeSwitch()];
+      const parts = [];
+      if (progress) parts.push(nextTurnBanner());
+      parts.push(modeSwitch());
       parts.push(tripLine(END_COLOUR, 'To', end));
 
       if (progress && lastRoute && routeGeo && routeGeo.total > 0) {
@@ -1045,6 +1246,10 @@
         rc.addEventListener('click', recentre);
         row.append(rc);
       }
+      const voice = el('button', 'btn-voice', voiceOn ? '🔊' : '🔇');
+      voice.setAttribute('aria-label', voiceOn ? 'Turn voice directions off' : 'Turn voice directions on');
+      voice.addEventListener('click', toggleVoice);
+      row.append(voice);
       const stop = el('button', 'btn-end-ride', 'End ride');
       stop.addEventListener('click', endRide);
       row.append(stop);
