@@ -5,6 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0b5fff" />
   <title>Rider Map SG</title>
+
+  <!-- Install as an app -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Rider Map" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@^6.15.0/dist/maplibre-gl.css" />
   <style>
     html, body { margin: 0; height: 100%; }
@@ -436,6 +446,13 @@
         if (src) src.setData(emptyLine());
         showTrip([el('div', 'error', 'Route problem: ' + e.message)]);
       }
+    }
+
+    // ---------- install as an app ----------
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => { /* app still works without it */ });
+      });
     }
   </script>
 </body>
