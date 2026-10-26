@@ -17,92 +17,151 @@
 
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@^6.15.0/dist/maplibre-gl.css" />
   <style>
-    html, body { margin: 0; height: 100%; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-    #map { position: fixed; inset: 0; }
+    /* ---------- colours: light (default) and dark ---------- */
+    :root {
+      --panel: #ffffff;
+      --text: #111111;
+      --muted: #555555;
+      --line: #e6e8ec;
+      --chip: #eef1f5;
+      --chip-text: #333333;
+      --accent: #0b5fff;
+      --start-bg: #e5f4e4; --start-text: #1b6b1b;
+      --end-bg: #fbebeb;   --end-text: #a11d1d;
+      --me-bg: #e7f1fb;    --me-text: #0b5fff;
+      --error: #a11d1d;
+      --shadow: 0 2px 12px rgba(0,0,0,.28);
+      --map-bg: #f2efe9;
+      --seg-on: #ffffff;
+      --edge: transparent;
+    }
+    :root[data-theme="dark"] {
+      --panel: #1b1f26;
+      --text: #f2f4f7;
+      --muted: #a9b1bd;
+      --line: #2c323c;
+      --chip: #2a303a;
+      --chip-text: #e6e9ee;
+      --accent: #6ea0ff;
+      --start-bg: #1d3a24; --start-text: #8fe0a2;
+      --end-bg: #3d1f22;   --end-text: #ff9b9b;
+      --me-bg: #1f3050;    --me-text: #9cc0ff;
+      --error: #ff9b9b;
+      --shadow: 0 2px 14px rgba(0,0,0,.6);
+      --map-bg: #1a1d21;
+      --seg-on: #3d4553;
+      --edge: #343b47;
+    }
 
-    /* Search bar */
+    html, body { margin: 0; height: 100%; background: var(--map-bg); }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text); }
+    #map { position: fixed; inset: 0; background: var(--map-bg); }
+    button { font-family: inherit; -webkit-tap-highlight-color: transparent; }
+
+    /* ---------- search bar ---------- */
     .search {
       position: fixed; left: 12px; right: 12px;
       top: calc(env(safe-area-inset-top, 0px) + 12px);
       z-index: 5;
     }
     .search-box {
-      display: flex; align-items: center; gap: 8px;
-      background: #fff; border-radius: 12px;
-      padding: 4px 6px 4px 14px;
-      box-shadow: 0 2px 10px rgba(0,0,0,.25);
+      display: flex; align-items: center; gap: 6px;
+      background: var(--panel); border-radius: 14px;
+      padding: 5px 5px 5px 16px; box-shadow: var(--shadow);
     }
     .search-box input {
       flex: 1; min-width: 0; border: 0; outline: none;
       font-size: 17px; /* 16px+ stops iPhone zooming in */
-      padding: 10px 0; background: transparent; color: #111;
+      padding: 12px 0; background: transparent; color: var(--text);
     }
-    .search-box button {
-      border: 0; background: #eef1f5; color: #333;
-      width: 40px; height: 40px; border-radius: 10px;
-      font-size: 20px; cursor: pointer;
+    .search-box input::placeholder { color: var(--muted); }
+    .icon-btn {
+      flex: none; border: 0; background: var(--chip); color: var(--chip-text);
+      width: 48px; height: 48px; border-radius: 12px;
+      font-size: 22px; line-height: 1; cursor: pointer;
     }
     .results {
       list-style: none; margin: 8px 0 0; padding: 0;
-      background: #fff; border-radius: 12px;
-      box-shadow: 0 2px 10px rgba(0,0,0,.25);
+      background: var(--panel); border-radius: 14px; box-shadow: var(--shadow);
       max-height: 55vh; overflow-y: auto;
     }
     .results:empty { display: none; }
-    .results li { padding: 12px 14px; border-bottom: 1px solid #eee; cursor: pointer; }
+    .results li { padding: 14px 16px; min-height: 28px; border-bottom: 1px solid var(--line); cursor: pointer; }
     .results li:last-child { border-bottom: 0; }
-    .results li:active { background: #f2f5fa; }
-    .results .name { font-weight: 600; font-size: 15px; color: #111; }
-    .results .addr { font-size: 13px; color: #555; margin-top: 2px; }
-    .results .msg { color: #555; cursor: default; }
+    .results li:active { background: var(--chip); }
+    .results .name { font-weight: 600; font-size: 16px; color: var(--text); }
+    .results .addr { font-size: 14px; color: var(--muted); margin-top: 3px; }
+    .results .msg { color: var(--muted); cursor: default; }
 
-    /* Floating "start from my location" button */
+    /* ---------- floating "start from my location" ---------- */
     .locate {
       position: fixed; left: 12px;
       bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
-      z-index: 4; border: 0; border-radius: 24px;
-      background: #fff; color: #0b5fff;
-      padding: 12px 16px; font-size: 15px; font-weight: 600;
-      box-shadow: 0 2px 10px rgba(0,0,0,.25); cursor: pointer;
+      z-index: 4; border: 0; border-radius: 28px;
+      background: var(--panel); color: var(--accent);
+      min-height: 56px; padding: 0 20px; font-size: 17px; font-weight: 700;
+      box-shadow: var(--shadow); cursor: pointer;
     }
     .locate[hidden] { display: none; }
 
-    /* Bottom card */
+    /* ---------- bottom card ---------- */
     .card {
-      position: fixed; left: 12px; right: 12px;
-      bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
-      background: #fff; border-radius: 14px; padding: 14px;
-      box-shadow: 0 2px 12px rgba(0,0,0,.3); z-index: 5; color: #111;
+      position: fixed; left: 10px; right: 10px;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+      background: var(--panel); color: var(--text);
+      border-radius: 18px; padding: 14px; box-shadow: var(--shadow); z-index: 5;
+      border: 1px solid var(--edge);
     }
     .card[hidden] { display: none; }
-    .card .place { font-weight: 600; font-size: 16px; }
-    .card .sub { font-size: 13px; color: #555; margin-top: 2px; }
-    .card .row { display: flex; gap: 8px; margin-top: 12px; }
-    .card button {
-      flex: 1; border: 0; border-radius: 10px; padding: 13px 10px;
-      font-size: 16px; font-weight: 600; cursor: pointer;
+    .card .place { font-weight: 700; font-size: 18px; }
+    .card .sub { font-size: 15px; color: var(--muted); margin-top: 3px; }
+    .card .row { display: flex; gap: 10px; margin-top: 12px; }
+    .card .row button {
+      flex: 1; border: 0; border-radius: 14px; min-height: 56px; padding: 0 10px;
+      font-size: 17px; font-weight: 700; cursor: pointer;
     }
-    .btn-start { background: #e5f4e4; color: #1b6b1b; }
-    .btn-end   { background: #fbebeb; color: #a11d1d; }
-    .btn-clear { background: #eef1f5; color: #333; }
-    .btn-me    { background: #e7f1fb; color: #0b5fff; }
+    .btn-start { background: var(--start-bg); color: var(--start-text); }
+    .btn-end   { background: var(--end-bg);   color: var(--end-text); }
+    .btn-clear { background: var(--chip);     color: var(--chip-text); flex: 0 0 34% !important; }
+    .btn-clear:only-child { flex: 1 !important; }
+    .icon-btn svg { width: 24px; height: 24px; display: block; margin: auto; }
+    .btn-me    { background: var(--me-bg);    color: var(--me-text); }
+    button:active { filter: brightness(.92); }
 
     /* Cycle / Drive / Walk switch */
     .modes {
-      display: flex; background: #eef1f5; border-radius: 10px; padding: 3px; gap: 3px;
-      margin-bottom: 10px;
+      display: flex; background: var(--chip); border-radius: 14px; padding: 4px; gap: 4px;
+      margin-bottom: 12px;
     }
-    .card .modes button {
-      padding: 10px 4px; font-size: 15px; background: transparent; color: #444;
+    .modes button {
+      flex: 1; border: 0; border-radius: 11px; min-height: 48px;
+      font-size: 16px; font-weight: 700; background: transparent; color: var(--muted); cursor: pointer;
     }
-    .card .modes button.on { background: #fff; color: #0b5fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+    .modes button.on { background: var(--seg-on); color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,.25); }
 
-    .trip { font-size: 14px; line-height: 1.5; }
-    .trip .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
-    .summary { font-size: 22px; font-weight: 700; margin-top: 8px; }
-    .summary small { font-size: 14px; font-weight: 500; color: #555; }
-    .error { color: #a11d1d; font-size: 14px; margin-top: 8px; }
+    .trip { font-size: 16px; line-height: 1.6; }
+    .trip .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
+    .summary { font-size: 28px; font-weight: 800; margin-top: 8px; }
+    .summary small { font-size: 16px; font-weight: 600; color: var(--muted); }
+    .wake { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .wake:empty { display: none; }
+    .error { color: var(--error); font-size: 15px; margin-top: 8px; }
+
+    /* Short message at the top, e.g. "Dark mode" */
+    .toast {
+      position: fixed; left: 50%; transform: translateX(-50%);
+      top: calc(env(safe-area-inset-top, 0px) + 80px);
+      background: var(--text); color: var(--panel);
+      padding: 10px 16px; border-radius: 20px; font-size: 15px; font-weight: 600;
+      z-index: 6; opacity: 0; transition: opacity .2s; pointer-events: none;
+    }
+    .toast.show { opacity: .94; }
+
+    /* Bigger +/- map buttons, readable in dark mode */
+    .maplibregl-ctrl-group button { width: 44px !important; height: 44px !important; }
+    :root[data-theme="dark"] .maplibregl-ctrl-group { filter: invert(.9) hue-rotate(180deg); }
+    :root[data-theme="dark"] .maplibregl-ctrl-attrib { background: rgba(27,31,38,.8); color: #ccc; }
+    :root[data-theme="dark"] .maplibregl-ctrl-attrib a { color: #ccc; }
   </style>
 </head>
 <body>
@@ -112,7 +171,8 @@
     <div class="search-box">
       <input id="q" type="search" placeholder="Search a place, block or postal code"
              autocomplete="off" enterkeyhint="search" aria-label="Search places" />
-      <button id="clear" type="button" aria-label="Clear search">×</button>
+      <button id="theme" class="icon-btn" type="button" aria-label="Change light or dark mode"></button>
+      <button id="clear" class="icon-btn" type="button" aria-label="Clear search">×</button>
     </div>
     <ul id="results" class="results"></ul>
   </div>
@@ -120,6 +180,7 @@
   <button id="locate" class="locate" type="button">◎ Start from my location</button>
 
   <div id="card" class="card" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script type="module">
     import * as maplibregl from 'https://unpkg.com/maplibre-gl@^6.15.0/dist/maplibre-gl.mjs';
@@ -127,49 +188,95 @@
     const START_COLOUR = '#1b9e3e';
     const END_COLOUR = '#d62828';
 
-    const MODES = {
-      cycle: { label: 'Cycle', words: 'by bicycle', colour: '#0b5fff' },
-      drive: { label: 'Drive', words: 'by car',     colour: '#7a3cff' },
-      walk:  { label: 'Walk',  words: 'on foot',    colour: '#0a8a7a' }
+    const MAP_STYLES = {
+      light: 'https://tiles.openfreemap.org/styles/liberty',
+      dark: 'https://tiles.openfreemap.org/styles/dark'
     };
 
-    // Remember the last travel mode on this phone (falls back to Cycle)
-    let mode = 'cycle';
-    try {
-      const saved = localStorage.getItem('mode');
-      if (MODES[saved]) mode = saved;
-    } catch (e) { /* storage blocked: keep default */ }
+    // Route colours, brighter versions for the dark map
+    const MODES = {
+      cycle: { label: 'Cycle', words: 'by bicycle', light: '#0b5fff', dark: '#5b95ff' },
+      drive: { label: 'Drive', words: 'by car',     light: '#7a3cff', dark: '#b48cff' },
+      walk:  { label: 'Walk',  words: 'on foot',    light: '#0a8a7a', dark: '#2fd1b5' }
+    };
 
-    // Centre of Singapore (longitude, latitude)
+    // ---------- saved settings (this phone only) ----------
+    function load(key, allowed, fallback) {
+      try {
+        const v = localStorage.getItem(key);
+        return allowed.includes(v) ? v : fallback;
+      } catch (e) { return fallback; }
+    }
+    function save(key, value) {
+      try { localStorage.setItem(key, value); } catch (e) { /* storage blocked: ignore */ }
+    }
+
+    // Theme button icons: half circle = Auto, moon = Dark, sun = Light
+    const SVG = (body) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + body + '</svg>';
+    const THEME_ICONS = {
+      auto: SVG('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/>'),
+      dark: SVG('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
+      light: SVG('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>')
+    };
+
+    let mode = load('mode', Object.keys(MODES), 'cycle');
+    let themeSetting = load('theme', ['auto', 'light', 'dark'], 'auto');
+
+    // ---------- light / dark ----------
+    const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    function effectiveTheme() {
+      return themeSetting === 'auto' ? (darkQuery.matches ? 'dark' : 'light') : themeSetting;
+    }
+    let theme = effectiveTheme();
+
+    function applyThemeToPage() {
+      document.documentElement.dataset.theme = theme;
+      document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#1b1f26' : '#0b5fff';
+      themeBtn.innerHTML = THEME_ICONS[themeSetting]; // fixed icons defined below, no user text
+      themeBtn.dataset.setting = themeSetting;
+    }
+
+    function lineColour() { return MODES[mode][theme]; }
+    function casingColour() { return theme === 'dark' ? '#0b0f14' : '#ffffff'; }
+
+    // ---------- map ----------
     const map = new maplibregl.Map({
       container: 'map',
-      style: 'https://tiles.openfreemap.org/styles/liberty',
+      style: MAP_STYLES[theme],
       center: [103.8198, 1.3521],
       zoom: 11.2,
       maxBounds: [[103.55, 1.12], [104.15, 1.50]]
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
-    // Empty route line, filled in when a route arrives
-    map.on('load', () => {
-      map.addSource('route', { type: 'geojson', data: emptyLine() });
+    // Runs on first load and again after every light/dark switch
+    map.on('style.load', () => {
+      map.addSource('route', { type: 'geojson', data: routeFeature() });
       map.addLayer({ id: 'route-casing', type: 'line', source: 'route',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#ffffff', 'line-width': 10 } });
+        paint: { 'line-color': casingColour(), 'line-width': 11 } });
       map.addLayer({ id: 'route-line', type: 'line', source: 'route',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': MODES[mode].colour, 'line-width': 6 } });
+        paint: { 'line-color': lineColour(), 'line-width': 7 } });
     });
 
-    function emptyLine() {
-      return { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } };
+    function routeFeature() {
+      return { type: 'Feature', geometry: { type: 'LineString', coordinates: lastRoute ? lastRoute.coordinates : [] } };
+    }
+
+    function drawRoute() {
+      const src = map.getSource('route');
+      if (src) src.setData(routeFeature());
+      if (map.getLayer('route-line')) map.setPaintProperty('route-line', 'line-color', lineColour());
     }
 
     const input = document.getElementById('q');
     const list = document.getElementById('results');
     const clearBtn = document.getElementById('clear');
+    const themeBtn = document.getElementById('theme');
     const card = document.getElementById('card');
     const locateBtn = document.getElementById('locate');
+    const toast = document.getElementById('toast');
 
     let picked = null;       // place chosen from search, waiting for Start/Go
     let pickedMarker = null;
@@ -178,7 +285,69 @@
     let timer = null;
     let lastQuery = '';
     let routeRequest = 0;    // ignores answers to older route requests
-    let lastRoute = null;    // last successful route
+    let lastRoute = null;    // the route currently on the map
+    let toastTimer = null;
+
+    applyThemeToPage();
+
+    function setTheme(next) {
+      themeSetting = next;
+      save('theme', themeSetting);
+      const newTheme = effectiveTheme();
+      const changed = newTheme !== theme;
+      theme = newTheme;
+      applyThemeToPage();
+      if (changed) map.setStyle(MAP_STYLES[theme]);
+    }
+
+    themeBtn.addEventListener('click', () => {
+      const order = ['auto', 'dark', 'light'];
+      const next = order[(order.indexOf(themeSetting) + 1) % order.length];
+      setTheme(next);
+      const names = { auto: 'Auto: follows your phone', dark: 'Dark mode', light: 'Light mode' };
+      showToast(names[next]);
+    });
+
+    // In Auto, follow the phone when it switches between light and dark
+    darkQuery.addEventListener('change', () => { if (themeSetting === 'auto') setTheme('auto'); });
+
+    function showToast(text) {
+      toast.textContent = text;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 1600);
+    }
+
+    // ---------- keep the screen on while a route is showing ----------
+    let wakeLock = null;
+
+    async function keepScreenOn() {
+      if (!('wakeLock' in navigator) || wakeLock || document.visibilityState !== 'visible') {
+        updateWakeNote();
+        return;
+      }
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; updateWakeNote(); });
+      } catch (e) {
+        wakeLock = null; // e.g. battery saver on: the app still works, screen just dims normally
+      }
+      updateWakeNote();
+    }
+
+    function letScreenSleep() {
+      if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+    }
+
+    function updateWakeNote() {
+      const note = card.querySelector('.wake');
+      if (note) note.textContent = (lastRoute && wakeLock) ? 'Screen stays on while this route is showing' : '';
+    }
+
+    // The phone drops the lock when you leave the app; take it back when you return
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && lastRoute) keepScreenOn();
+    });
 
     // ---------- helpers ----------
     function el(tag, className, text) {
@@ -383,8 +552,8 @@
     function setMode(key) {
       if (key === mode) return;
       mode = key;
-      try { localStorage.setItem('mode', mode); } catch (e) { /* ignore */ }
-      if (map.getLayer('route-line')) map.setPaintProperty('route-line', 'line-color', MODES[mode].colour);
+      save('mode', mode);
+      if (map.getLayer('route-line')) map.setPaintProperty('route-line', 'line-color', lineColour());
       if (start && end) getRoute(); else showTrip();
     }
 
@@ -402,7 +571,8 @@
       clear.addEventListener('click', clearRoute);
       row.append(clear);
 
-      showCard([modeSwitch(), trip, ...extra, row]);
+      showCard([modeSwitch(), trip, ...extra, el('div', 'wake'), row]);
+      updateWakeNote();
     }
 
     function clearRoute() {
@@ -410,8 +580,8 @@
       start = end = picked = lastRoute = null;
       [startMarker, endMarker, pickedMarker].forEach((m) => m && m.remove());
       startMarker = endMarker = pickedMarker = null;
-      const src = map.getSource('route');
-      if (src) src.setData(emptyLine());
+      drawRoute();
+      letScreenSleep();
       hideCard();
     }
 
@@ -428,22 +598,23 @@
         if (myRequest !== routeRequest) return; // user changed something meanwhile
 
         lastRoute = data;
-        const src = map.getSource('route');
-        if (src) src.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: data.coordinates } });
+        drawRoute();
 
         const bounds = data.coordinates.reduce(
           (b, c) => b.extend(c), new maplibregl.LngLatBounds(data.coordinates[0], data.coordinates[0]));
-        map.fitBounds(bounds, { padding: { top: 90, bottom: 260, left: 40, right: 40 }, maxZoom: 17 });
+        map.fitBounds(bounds, { padding: { top: 100, bottom: 300, left: 40, right: 60 }, maxZoom: 17 });
 
         const summary = el('div', 'summary');
         summary.append(
           document.createTextNode(formatDistance(data.distance_m)),
           el('small', null, '  ·  ' + formatTime(data.time_s) + ' ' + m.words));
         showTrip([summary]);
+        keepScreenOn();
       } catch (e) {
         if (myRequest !== routeRequest) return;
-        const src = map.getSource('route');
-        if (src) src.setData(emptyLine());
+        lastRoute = null;
+        drawRoute();
+        letScreenSleep();
         showTrip([el('div', 'error', 'Route problem: ' + e.message)]);
       }
     }
