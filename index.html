@@ -16,6 +16,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@^6.15.0/dist/maplibre-gl.css" />
+  <!-- Vercel Web Analytics: anonymous visitor counts, no cookies (switch on under Analytics in Vercel) -->
+  <script defer src="/_vercel/insights/script.js"></script>
   <!-- Apple-style type: SF Pro on Apple devices; Inter (a free, very similar font) elsewhere -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -338,6 +340,58 @@
     }
     .toast.show { opacity: 1; }
 
+    /* Send ETA, warnings and small links on the cards */
+    .card .btn-share {
+      display: block; width: 100%; margin-top: 10px; min-height: 46px; border: 0; border-radius: 12px;
+      background: var(--tint-green); color: var(--start-text); font-size: 16px; font-weight: 600; cursor: pointer;
+    }
+    .card .warn { margin-top: 8px; font-size: 15px; font-weight: 600; color: var(--orange); }
+    .card .links { margin-top: 10px; text-align: center; }
+    .link-btn {
+      border: 0; background: transparent; color: var(--accent); font-size: 15px; padding: 8px; min-height: 40px; cursor: pointer;
+    }
+    .link-btn:disabled { color: var(--muted); }
+    .results .tag-warn { background: var(--tint-red); color: var(--red); }
+    .results li.add-row .name { color: var(--accent); font-weight: 600; }
+
+    /* Sheet extras: menu rows, forms, notes, welcome */
+    .menu-row {
+      display: block; width: 100%; min-height: 50px; padding: 0 16px; border: 0; background: transparent;
+      color: var(--text); font-size: 17px; text-align: left; cursor: pointer; position: relative;
+    }
+    .menu-row::after { content: '›'; position: absolute; right: 16px; top: 50%; transform: translateY(-52%); color: var(--muted); font-size: 24px; }
+    .menu-row + .menu-row::before { content: ''; position: absolute; top: 0; left: 16px; right: 0; border-top: 0.5px solid var(--line); }
+    .menu-row:active { opacity: 1; background: var(--chip); }
+    .sheet-note { margin: 0 4px 14px; font-size: 15px; color: var(--muted); line-height: 1.4; }
+    .sheet-cancel {
+      width: 100%; margin-top: 10px; min-height: 50px; border: 0; border-radius: 14px;
+      background: transparent; color: var(--accent); font-size: 17px; font-weight: 500; cursor: pointer;
+    }
+    .field { display: block; margin-bottom: 14px; }
+    .field-label { display: block; margin: 0 0 6px 4px; font-size: 13px; color: var(--muted); text-transform: uppercase; }
+    .field input, .field select, .field textarea {
+      width: 100%; box-sizing: border-box; border: 0; border-radius: 12px; padding: 13px 14px;
+      background: var(--cell); color: var(--text); font: inherit; font-size: 17px; outline: none;
+    }
+    .field textarea { min-height: 84px; resize: vertical; }
+    .field textarea.tall { min-height: 140px; }
+    .field input:focus, .field select:focus, .field textarea:focus { box-shadow: 0 0 0 2px var(--accent); }
+    .trap { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+    .form-msg { min-height: 20px; margin: 0 4px; font-size: 15px; color: var(--error); }
+    .group.about { padding: 4px 16px; }
+    .group.about p { margin: 10px 0; font-size: 15px; line-height: 1.45; }
+    .welcome h2 { font-size: 28px; margin-top: 8px; }
+    .welcome-row { display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; }
+    .welcome-row + .welcome-row { border-top: 0.5px solid var(--line); }
+    .welcome-icon { font-size: 26px; line-height: 1; flex: none; width: 32px; text-align: center; }
+    .welcome-row strong { display: block; font-size: 17px; font-weight: 600; }
+    .welcome-row span { display: block; font-size: 15px; color: var(--muted); margin-top: 2px; line-height: 1.35; }
+
+    /* Pin in the middle of the map when adding a missing place */
+    .picker { position: fixed; left: 50%; top: 50%; width: 40px; height: 52px; transform: translate(-50%, -100%); z-index: 4; pointer-events: none; }
+    .picker[hidden] { display: none; }
+    .picker svg { width: 40px; height: 52px; filter: drop-shadow(0 3px 4px rgba(0,0,0,.35)); }
+
     /* Map +/- buttons and credits, matched to the panels */
     .maplibregl-ctrl-group { border-radius: 12px !important; overflow: hidden; box-shadow: var(--shadow) !important; }
     .maplibregl-ctrl-group button { width: 44px !important; height: 44px !important; }
@@ -367,6 +421,9 @@
   <div id="card" class="card" hidden></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="sheet" class="sheet" hidden></div>
+  <div id="picker" class="picker" hidden aria-hidden="true">
+    <svg viewBox="0 0 40 52"><path d="M20 2C10 2 2 10 2 20c0 13 18 30 18 30s18-17 18-30C38 10 30 2 20 2z" fill="#af52de" stroke="#fff" stroke-width="3"/><circle cx="20" cy="20" r="6.5" fill="#fff"/></svg>
+  </div>
 
   <script type="module">
     import * as maplibregl from 'https://unpkg.com/maplibre-gl@^6.15.0/dist/maplibre-gl.mjs';
@@ -408,9 +465,14 @@
     let mode = load('mode', Object.keys(MODES), 'cycle');
     let themeSetting = load('theme', ['auto', 'light', 'dark'], 'auto');
 
+    // Riding options (saved on this phone)
+    const rideSettings = Object.assign({ headingUp: false, autoZoom: true, batterySaver: false },
+      (() => { try { return JSON.parse(localStorage.getItem('rideSettings')) || {}; } catch (e) { return {}; } })());
+
     // ---------- light / dark ----------
     const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
     function effectiveTheme() {
+      if (rideSettings.batterySaver) return 'dark';   // dark screens use less battery
       return themeSetting === 'auto' ? (darkQuery.matches ? 'dark' : 'light') : themeSetting;
     }
     let theme = effectiveTheme();
@@ -434,7 +496,7 @@
       maxBounds: [[103.55, 1.12], [104.15, 1.50]],
       attributionControl: false
     });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+    map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: false }), 'bottom-right'); // compass: tap to face north
 
     // Map credits (required by the OpenStreetMap licence): shown at first, then folded into
     // an (i) button after 5 seconds or when the map is moved. Tap (i) to see them again.
@@ -597,7 +659,7 @@
 
     const pointFeature = (lng, lat, props) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: props });
     const collection = (features) => ({ type: 'FeatureCollection', features });
-    const OVERLAY_SOURCES = ['ov-rain', 'ov-raining', 'ov-incidents', 'ov-moto', 'ov-cars'];
+    const OVERLAY_SOURCES = ['ov-rain', 'ov-raining', 'ov-incidents', 'ov-moto', 'ov-cars', 'ov-community'];
 
     function overlayData(id) {
       const w = feeds.weather.data, inc = feeds.incidents.data, cp = feeds.carparks.data;
@@ -612,6 +674,8 @@
           .map((i) => pointFeature(i.lng, i.lat, { t: 'incident', type: i.type, message: i.message })) : []);
         case 'ov-moto': return lots('motorcycle', 'moto');
         case 'ov-cars': return lots('car', 'car');
+        case 'ov-community': return collection(community.missing
+          .map((m) => pointFeature(m.lng, m.lat, { t: 'community', name: m.name, category: m.category || '', note: m.note || '' })));
       }
       return collection([]);
     }
@@ -622,7 +686,7 @@
       moto: ['ov-moto-dot', 'ov-moto-num'],
       cars: ['ov-cars-dot', 'ov-cars-num']
     };
-    const OVERLAY_TAP = ['ov-incidents-dot', 'ov-moto-dot', 'ov-cars-dot', 'ov-osm-parking', 'ov-amen-dot', 'ov-raining-dot', 'ov-rain-area'];
+    const OVERLAY_TAP = ['ov-community-dot', 'ov-incidents-dot', 'ov-moto-dot', 'ov-cars-dot', 'ov-osm-parking', 'ov-amen-dot', 'ov-raining-dot', 'ov-rain-area'];
     const RAIN_COLOUR = ['case', ['in', 'Thunder', ['get', 'forecast']], '#af52de',
                          ['in', 'Shower', ['get', 'forecast']], '#007aff', '#5ac8fa'];
 
@@ -677,6 +741,14 @@
           paint: { 'text-color': '#ffffff', 'text-translate': [shift, 0] } });
       }
 
+      // Places added by riders: always shown once zoomed in a little
+      map.addLayer({ id: 'ov-community-dot', type: 'circle', source: 'ov-community', minzoom: 13, paint: {
+        'circle-radius': 7, 'circle-color': '#af52de', 'circle-stroke-width': 2, 'circle-stroke-color': edge } });
+      map.addLayer({ id: 'ov-community-name', type: 'symbol', source: 'ov-community', minzoom: 15,
+        layout: { 'text-field': ['get', 'name'], 'text-font': font, 'text-size': 12, 'text-anchor': 'top',
+                  'text-offset': [0, 0.9], 'text-max-width': 8 },
+        paint: labelPaint });
+
       // Toilets, drinking water, shelters: read straight from the map tiles, so they appear instantly
       map.addLayer({ id: 'ov-amen-dot', type: 'circle', source: 'openmaptiles', 'source-layer': 'poi', minzoom: 14,
         filter: amenityFilter(), paint: {
@@ -723,7 +795,7 @@
         if (s) s.setData(overlayData(id));
       }
       applyOverlayVisibility();
-      if (!sheet.hidden) renderSheet();
+      refreshLayersSheet();
     }
 
     // What a tapped dot is, in words, for the card
@@ -747,6 +819,7 @@
       }
       const lotWords = (n, what) => n + ' ' + what + ' lot' + (Number(n) === 1 ? '' : 's') + ' free now' + (p.agency ? ' · ' + p.agency : '');
       switch (p.t) {
+        case 'community': return { name: p.name, address: [p.category, p.note].filter(Boolean).join(' · '), category: 'Added by riders' };
         case 'incident': return { name: p.type, address: p.message, noRecent: true };
         case 'moto': return { name: niceName(p.name), address: lotWords(p.lots, 'motorcycle'), noRecent: true };
         case 'car': return { name: niceName(p.name), address: lotWords(p.lots, 'car'), noRecent: true };
@@ -823,6 +896,27 @@
         toggleRow('Rain alerts', 'When rain is forecast near you in the next 2 hours', alertSettings.rain, null, () => setAlert('rain')),
         toggleRow('Heat alerts', 'A reminder to drink water when heat stress is high', alertSettings.heat, null, () => setAlert('heat')));
       panel.append(alertGroup);
+
+      panel.append(el('h3', null, 'Riding'));
+      const rideGroup = el('div', 'group group-alerts');
+      rideGroup.append(
+        toggleRow('Map turns with me', 'Your direction always points up while riding', rideSettings.headingUp, null, () => setRideSetting('headingUp')),
+        toggleRow('Auto zoom', 'Zooms out when you go fast, in near turns and the end', rideSettings.autoZoom, null, () => setRideSetting('autoZoom')),
+        toggleRow('Battery saver', 'Dark map, fewer updates between turns, no animations', rideSettings.batterySaver, null, () => setRideSetting('batterySaver')));
+      panel.append(rideGroup);
+
+      panel.append(el('h3', null, 'More'));
+      const more = el('div', 'group');
+      for (const [label, action] of [['Add a missing place', () => startAddPlace('')],
+                                     ['Send feedback', openFeedback],
+                                     ['About and privacy', openAbout]]) {
+        const b = el('button', 'menu-row', label);
+        b.type = 'button';
+        b.addEventListener('click', action);
+        more.append(b);
+      }
+      panel.append(more);
+
       const done = el('button', 'sheet-done', 'Done');
       done.type = 'button';
       done.addEventListener('click', closeSheet);
@@ -831,24 +925,51 @@
       sheet.append(panel);
     }
 
-    function openSheet() { renderSheet(); sheet.hidden = false; }
-    function closeSheet() { sheet.hidden = true; sheet.innerHTML = ''; }
-    sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
+    // One sheet at a time: 'layers', 'about', 'feedback', 'add' or 'welcome'
+    let sheetMode = null;
+    function openPanel(kind, build) {
+      sheetMode = kind;
+      const panel = el('div', 'sheet-panel');
+      panel.setAttribute('role', 'dialog');
+      build(panel);
+      sheet.innerHTML = '';
+      sheet.append(panel);
+      sheet.hidden = false;
+    }
+    function openSheet() { sheetMode = 'layers'; renderSheet(); sheet.hidden = false; }
+    function closeSheet() { sheet.hidden = true; sheet.innerHTML = ''; sheetMode = null; }
+    function refreshLayersSheet() { if (!sheet.hidden && sheetMode === 'layers') renderSheet(); }
+    sheet.addEventListener('click', (e) => { if (e.target === sheet && sheetMode !== 'welcome') closeSheet(); });
     document.getElementById('layers').addEventListener('click', openSheet);
 
     function setLayer(id, on) {
       shownLayers[id] = on;
       saveJson('layers', shownLayers);
       if (on && FEED_FOR[id]) loadFeed(FEED_FOR[id]);
+      if (on) track('layer_' + id);
       applyOverlayVisibility();
-      if (!sheet.hidden) renderSheet();
+      refreshLayersSheet();
+    }
+
+    function setRideSetting(key) {
+      rideSettings[key] = !rideSettings[key];
+      saveJson('rideSettings', rideSettings);
+      if (key === 'batterySaver') {
+        setTheme(themeSetting);   // battery saver switches to the dark map
+        showToast(rideSettings.batterySaver ? 'Battery saver on' : 'Battery saver off');
+      }
+      if (key === 'headingUp' && !rideSettings.headingUp && typeof map.getBearing === 'function' && map.getBearing() !== 0) {
+        map.easeTo({ bearing: 0, duration: 400 });
+      }
+      if (rideSettings[key]) track('setting_' + key.toLowerCase());
+      refreshLayersSheet();
     }
 
     function setAlert(kind) {
       alertSettings[kind] = !alertSettings[kind];
       saveJson('alertSettings', alertSettings);
       checkAlerts();
-      if (!sheet.hidden) renderSheet();
+      refreshLayersSheet();
     }
 
     // ---------- rain and heat alerts ----------
@@ -935,12 +1056,17 @@
     }
 
     // Keep layers and alerts fresh while the app is open
+    let ticks = 0;
     setInterval(() => {
       if (document.visibilityState !== 'visible') return;
+      ticks++;
+      if (rideSettings.batterySaver && ticks % 5 !== 0) return;
+      if (ticks % 10 === 0) loadCommunity();
       refreshShownLayers();
       checkAlerts();
     }, 60 * 1000);
-    setTimeout(() => { refreshShownLayers(); checkAlerts(); }, 1500);
+    setTimeout(() => { refreshShownLayers(); checkAlerts(); loadCommunity(); }, 1500);
+    setTimeout(showWelcome, 700);
 
     // Runs on first load and again after every light/dark switch
     map.on('style.load', () => {
@@ -1009,6 +1135,8 @@
     let offRouteCount = 0;
     let lastRerouteAt = 0;
     let routeGeo = null;     // route in metres, for working out progress
+    let lastHeavy = 0;       // battery saver: when the last full update ran
+    let lastAutoZoom = null; // auto zoom: last zoom chosen
 
     applyThemeToPage();
 
@@ -1143,19 +1271,25 @@
       return niceStreet(text).replace(/\bSingapore (\d{6})\b/, 'Singapore $1');
     }
 
-    function showResults(results) {
+    function showResults(results, q) {
       list.innerHTML = '';
       list.dataset.quick = '';
-      if (!results.length) { showMessage('No places found'); return; }
+      if (!results.length) list.appendChild(el('li', 'msg', 'No places found'));
       for (const r of results) {
         const li = el('li');
         const addr = el('div', 'addr');
+        if (closedReports(r)) addr.append(el('span', 'tag tag-warn', 'Reported closed'));
         if (r.category) addr.append(el('span', 'tag', r.category));
         addr.append(document.createTextNode(r.address || ''));
         li.append(el('div', 'name', r.name), addr);
         li.addEventListener('click', () => choose(r));
         list.appendChild(li);
       }
+      // Can't find it? Let riders add it for everyone
+      const add = el('li', 'add-row');
+      add.append(el('div', 'name', '＋ Add a missing place'), el('div', 'addr', 'Can\u2019t find it? Put it on the map for other riders'));
+      add.addEventListener('click', () => startAddPlace(q || ''));
+      list.appendChild(add);
     }
 
     async function search(q) {
@@ -1168,8 +1302,9 @@
           + '&lat=' + c.lat.toFixed(2) + '&lng=' + c.lng.toFixed(2));
         if (q !== lastQuery) return;
         // OneMap names come in capitals; show them in normal case, like the rest of the app
-        showResults((data.results || []).map((r) => r.category ? r
-          : { ...r, name: niceName(r.name), address: niceName(r.address) }));
+        showResults([...communityMatches(q), ...(data.results || []).map((r) => r.category ? r
+          : { ...r, name: niceName(r.name), address: niceName(r.address) })], q);
+        track('search');
       } catch (e) {
         if (q === lastQuery) showMessage('Search problem: ' + e.message);
       }
@@ -1241,7 +1376,22 @@
         });
         row.append(star);
       }
-      showCard([el('div', 'place', r.name), el('div', 'sub', r.address), row]);
+      const parts = [el('div', 'place', r.name), el('div', 'sub', r.address)];
+      const closedCount = closedReports(r);
+      if (closedCount) parts.push(el('div', 'warn', '⚠ Reported closed for good by ' + closedCount + (closedCount === 1 ? ' rider' : ' riders')));
+      parts.push(row);
+      if (!r.noRecent && r.name !== 'My location') {
+        const links = el('div', 'links');
+        const report = el('button', 'link-btn', 'Closed for good? Let other riders know');
+        report.type = 'button';
+        report.addEventListener('click', () => {
+          report.textContent = 'Tap again to confirm it has closed for good';
+          report.onclick = () => reportClosed(r, report);
+        }, { once: true });
+        links.append(report);
+        parts.push(links);
+      }
+      showCard(parts);
     }
 
     // ---------- saved and recent places (kept on this phone only) ----------
@@ -1458,7 +1608,8 @@
         summary.append(
           document.createTextNode(formatDistance(data.distance_m)),
           el('small', null, '  ·  ' + formatTime(data.time_s) + ' ' + m.words));
-        showTrip([summary]);
+        showTrip([summary, etaButton(data.time_s || 0)]);
+        track('route_' + mode);
       } catch (e) {
         if (myRequest !== routeRequest) return;
         if (riding) {
@@ -1719,7 +1870,10 @@
       offRouteCount = 0;
       lastRerouteAt = Date.now();
       progress = null;
+      lastHeavy = 0;
+      lastAutoZoom = null;
       keepScreenOn();
+      track('ride_start');
       showRideCard([el('div', 'sub', 'Waiting for GPS…')]);
       // Speaking straight from the tap also unlocks the voice on iPhones
       const first = navSteps.find((s) => s.kind === 'depart');
@@ -1735,6 +1889,8 @@
       lastFix = null;
       progress = null;
       if (meMarker) { meMarker.remove(); meMarker = null; }
+      // Back to north-up after a ride with "Map turns with me"
+      if (typeof map.getBearing === 'function' && map.getBearing() !== 0) map.easeTo({ bearing: 0, duration: 400 });
     }
 
     function endRide() {
@@ -1757,13 +1913,26 @@
         heading = (Math.atan2(q[0] - p[0], q[1] - p[1]) * 180 / Math.PI + 360) % 360;
       }
       if (heading == null && lastFix) heading = lastFix.heading;
-      lastFix = { lat: c.latitude, lng: c.longitude, accuracy: c.accuracy || 0, heading, time: Date.now() };
+
+      // Speed in km/h: from the phone if it knows, otherwise from the last two fixes
+      let speedKmh = (c.speed != null && !Number.isNaN(c.speed)) ? c.speed * 3.6 : null;
+      if (speedKmh == null && lastFix) {
+        const secs = (Date.now() - lastFix.time) / 1000;
+        if (secs > 0.5) speedKmh = metresBetween([lastFix.lng, lastFix.lat], here) / secs * 3.6;
+      }
+      lastFix = { lat: c.latitude, lng: c.longitude, accuracy: c.accuracy || 0, heading, speedKmh, time: Date.now() };
 
       if (!meMarker) meMarker = makeMeMarker().setLngLat(here).addTo(map);
       else meMarker.setLngLat(here);
-      const rot = meMarker.getElement().querySelector('.me-rot');
-      rot.style.transform = 'rotate(' + (heading || 0) + 'deg)';
-      rot.style.opacity = heading == null ? '0' : '1';
+      updateArrow();
+
+      // Battery saver: between turns, do the full update only every 4 seconds
+      if (rideSettings.batterySaver && lastHeavy && Date.now() - lastHeavy < 4000) {
+        const n = nextTurn();
+        const nearSomething = (n && n.dist < 200) || metresBetween(here, [end.lng, end.lat]) < 300;
+        if (!nearSomething) return;
+      }
+      lastHeavy = Date.now();
 
       // Arrived?
       if (metresBetween(here, [end.lng, end.lat]) < 35) { arrived(); return; }
@@ -1782,16 +1951,43 @@
 
       announceTurns();
 
-      if (following) {
-        map.easeTo({
-          center: here,
-          zoom: Math.max(map.getZoom(), 16),
-          offset: [0, -Math.round(card.offsetHeight / 2)],
-          duration: 800
-        });
-      }
+      if (following) map.easeTo(followView(here, heading, speedKmh));
       showRideCard();
     }
+
+    // Where the map should look while following the rider
+    function followView(here, heading, speedKmh) {
+      const n = nextTurn();
+      const toEnd = end ? metresBetween(here, [end.lng, end.lat]) : Infinity;
+      return {
+        center: here,
+        zoom: rideSettings.autoZoom ? autoZoomLevel(speedKmh, n ? n.dist : Infinity, toEnd) : Math.max(map.getZoom(), 16),
+        bearing: rideSettings.headingUp ? (heading != null ? heading : map.getBearing()) : 0,
+        offset: [0, -Math.round(card.offsetHeight / 2)],
+        duration: rideSettings.batterySaver ? 0 : 800
+      };
+    }
+
+    // Auto zoom: further out when moving fast, close in near turns and the destination
+    function autoZoomLevel(kmh, toTurn, toEnd) {
+      let z = kmh == null ? 16.8 : kmh < 12 ? 17.3 : kmh < 25 ? 16.8 : kmh < 45 ? 16.2 : kmh < 70 ? 15.6 : 15;
+      const nearTurnOrEnd = toTurn < 150 || toEnd < 250;
+      if (nearTurnOrEnd) z = Math.max(z, 17.2);   // always close in before a turn or the destination
+      else if (lastAutoZoom != null && Math.abs(z - lastAutoZoom) < 0.5) z = lastAutoZoom; // otherwise, no jittery zooming
+      lastAutoZoom = z;
+      return z;
+    }
+
+    // The arrow shows the direction of travel on screen, allowing for how far the map is turned
+    function updateArrow() {
+      if (!meMarker || !lastFix) return;
+      const rot = meMarker.getElement().querySelector('.me-rot');
+      if (!rot) return;
+      const bearing = typeof map.getBearing === 'function' ? map.getBearing() : 0;
+      rot.style.transform = 'rotate(' + ((lastFix.heading || 0) - bearing) + 'deg)';
+      rot.style.opacity = lastFix.heading == null ? '0' : '1';
+    }
+    map.on('rotate', updateArrow);
 
     function updateProgress(fix) {
       if (!routeGeo || routeGeo.pts.length < 2) return;
@@ -1831,6 +2027,7 @@
       row.append(done);
       showCard([el('div', 'summary', 'You have arrived'), el('div', 'sub', place), row]);
       speak('You have arrived' + (end ? ' at ' + niceStreet(end.name) : '') + '.');
+      track('ride_arrived');
       letScreenSleep();
     }
 
@@ -1841,10 +2038,7 @@
 
     function recentre() {
       following = true;
-      if (lastFix) {
-        map.easeTo({ center: [lastFix.lng, lastFix.lat], zoom: Math.max(map.getZoom(), 16),
-          offset: [0, -Math.round(card.offsetHeight / 2)], duration: 600 });
-      }
+      if (lastFix) map.easeTo(Object.assign(followView([lastFix.lng, lastFix.lat], lastFix.heading, lastFix.speedKmh), { duration: 600 }));
       showRideCard();
     }
 
@@ -1872,6 +2066,7 @@
           el('small', null, '  ·  ' + formatTime(Math.max(secondsLeft, 60)) + ' left'));
         parts.push(summary);
         parts.push(el('div', 'sub', 'Arrive about ' + arrivalClock(secondsLeft) + ' ' + m.words));
+        parts.push(etaButton(secondsLeft));
         if (progress.offRoute_m > 50) parts.push(el('div', 'sub', 'You are off the route'));
       }
       parts.push(...extra, el('div', 'wake'));
@@ -1893,6 +2088,286 @@
 
       showCard(parts);
       updateWakeNote();
+    }
+
+    // ---------- anonymous usage counts (no user, device or location) ----------
+    const APP_VERSION = '2026.10.27';
+    const lastTracked = {};
+    function track(name) {
+      if (!/^[a-z_:]{2,40}$/.test(name)) return;
+      if (lastTracked[name] && Date.now() - lastTracked[name] < 30000) return; // at most twice a minute per feature
+      lastTracked[name] = Date.now();
+      try {
+        fetch('/api/community', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'event', event: name }) }).catch(() => {});
+      } catch (e) { /* counting is optional */ }
+    }
+
+    async function postCommunity(body) {
+      const resp = await fetch('/api/community', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body) });
+      let data = {};
+      try { data = await resp.json(); } catch (e) { /* ignore */ }
+      if (!resp.ok) throw new Error(data.error || ('Could not send (status ' + resp.status + ')'));
+      return data;
+    }
+
+    // ---------- Share ETA with the customer ----------
+    const MODE_EMOJI = { cycle: '🚲', drive: '🚗', walk: '🚶' };
+    function etaButton(secondsLeft) {
+      const b = el('button', 'btn-share', '💬 Send ETA to customer');
+      b.type = 'button';
+      b.addEventListener('click', () => shareEta(secondsLeft));
+      return b;
+    }
+    async function shareEta(secondsLeft) {
+      const text = 'Hi! I am on the way ' + MODE_EMOJI[mode] + ' Arriving about ' + arrivalClock(secondsLeft) + '.';
+      track('share_eta');
+      // The phone's own share menu (WhatsApp, Telegram, SMS, Copy...), or WhatsApp directly
+      if (navigator.share) {
+        try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+      }
+      window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener');
+    }
+
+    // ---------- community: closed places and rider-added places ----------
+    let community = { closed: [], missing: [] };
+    async function loadCommunity() {
+      try {
+        const data = await getJson('/api/community');
+        community = { closed: data.closed || [], missing: data.missing || [] };
+        updateOverlays();
+      } catch (e) { /* the app works without it */ }
+    }
+    function sameName(a, b) {
+      const x = String(a || '').toLowerCase().replace(/[^a-z0-9]/g, ''), y = String(b || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return x && y && (x === y || x.includes(y) || y.includes(x));
+    }
+    function closedReports(place) {
+      if (!place || place.lat == null) return 0;
+      const hit = community.closed.find((c) => sameName(c.name, place.name) && metresBetween([c.lng, c.lat], [place.lng, place.lat]) < 80);
+      return hit ? hit.count : 0;
+    }
+    function communityMatches(q) {
+      const k = String(q).toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (k.length < 2) return [];
+      return community.missing
+        .filter((m) => String(m.name).toLowerCase().replace(/[^a-z0-9]/g, '').includes(k))
+        .slice(0, 3)
+        .map((m) => ({ name: m.name, address: [m.category, m.note].filter(Boolean).join(' · '),
+                       category: 'Added by riders', lat: m.lat, lng: m.lng }));
+    }
+
+    async function reportClosed(place, button) {
+      button.disabled = true;
+      try {
+        await postCommunity({ type: 'closed', name: place.name, lat: place.lat, lng: place.lng });
+        community.closed.push({ name: place.name, lat: place.lat, lng: place.lng, count: closedReports(place) + 1 });
+        button.textContent = 'Reported. Thanks for helping other riders!';
+        track('report_closed');
+      } catch (e) {
+        button.disabled = false;
+        showToast(e.message);
+      }
+    }
+
+    // "Add a missing place": first put the pin on the spot, then name it
+    const picker = document.getElementById('picker');
+    function startAddPlace(prefillName) {
+      closeSheet();
+      list.innerHTML = '';
+      list.dataset.quick = '';
+      input.blur();
+      picker.hidden = false;
+      const use = el('button', 'btn-end', 'Use this spot');
+      const cancel = el('button', 'btn-clear', 'Cancel');
+      use.addEventListener('click', () => {
+        const c = map.getCenter();
+        picker.hidden = true;
+        hideCard();
+        openAddPlaceForm(prefillName || '', c.lat, c.lng);
+      });
+      cancel.addEventListener('click', () => { picker.hidden = true; hideCard(); });
+      const row = el('div', 'row');
+      row.append(cancel, use);
+      showCard([el('div', 'place', 'Add a missing place'),
+                el('div', 'sub', 'Move the map so the pin sits exactly on the place, then tap Use this spot.'), row]);
+    }
+
+    function field(labelText, control) {
+      const wrap = el('label', 'field');
+      wrap.append(el('span', 'field-label', labelText), control);
+      return wrap;
+    }
+
+    function openAddPlaceForm(name, lat, lng) {
+      openPanel('add', (panel) => {
+        panel.append(el('h2', null, 'Add a missing place'));
+        panel.append(el('p', 'sheet-note', 'Other riders will find it in search and on the map. Please add real places only.'));
+        const nameInput = el('input');
+        Object.assign(nameInput, { type: 'text', maxLength: 80, value: name, placeholder: 'e.g. Obbi Good Label' });
+        const cat = el('select');
+        for (const c of ['Shop', 'Food', 'Office', 'Condo or HDB gate', 'Loading bay', 'Rider waiting area', 'Other']) {
+          const o = el('option', null, c); o.value = c; cat.append(o);
+        }
+        const note = el('textarea');
+        Object.assign(note, { maxLength: 200, placeholder: 'Helpful details, e.g. #05-03, take lift B' });
+        const trap = el('input');                       // hidden field only robots fill in
+        Object.assign(trap, { type: 'text', name: 'website', tabIndex: -1, autocomplete: 'off' });
+        trap.className = 'trap';
+        const msg = el('div', 'form-msg');
+        const send = el('button', 'sheet-done', 'Add place');
+        send.type = 'button';
+        send.addEventListener('click', async () => {
+          if (!nameInput.value.trim()) { msg.textContent = 'Please give the place a name.'; return; }
+          send.disabled = true;
+          msg.textContent = 'Sending…';
+          try {
+            await postCommunity({ type: 'missing', name: nameInput.value, category: cat.value, note: note.value, lat, lng, website: trap.value });
+            community.missing.unshift({ name: nameInput.value.trim(), category: cat.value, note: note.value.trim(), lat, lng, count: 1 });
+            updateOverlays();
+            track('add_place');
+            closeSheet();
+            showToast('Added. Thank you!');
+          } catch (e) {
+            send.disabled = false;
+            msg.textContent = e.message;
+          }
+        });
+        const cancel = el('button', 'sheet-cancel', 'Cancel');
+        cancel.type = 'button';
+        cancel.addEventListener('click', closeSheet);
+        panel.append(field('Name', nameInput), field('Type', cat), field('Details (optional)', note), trap, msg, send, cancel);
+      });
+    }
+
+    // ---------- feedback ----------
+    function openFeedback() {
+      openPanel('feedback', (panel) => {
+        panel.append(el('h2', null, 'Send feedback'));
+        panel.append(el('p', 'sheet-note', 'Tell us what works, what doesn’t, and what you’d like next. It goes straight to the team behind ' + document.title + '.'));
+        const msgBox = el('textarea');
+        Object.assign(msgBox, { maxLength: 2000, placeholder: 'Your feedback' });
+        msgBox.classList.add('tall');
+        const contact = el('input');
+        Object.assign(contact, { type: 'text', maxLength: 120, placeholder: 'Telegram, phone or email (optional)' });
+        const trap = el('input');
+        Object.assign(trap, { type: 'text', name: 'website', tabIndex: -1, autocomplete: 'off' });
+        trap.className = 'trap';
+        const msg = el('div', 'form-msg');
+        const send = el('button', 'sheet-done', 'Send');
+        send.type = 'button';
+        send.addEventListener('click', async () => {
+          if (!msgBox.value.trim()) { msg.textContent = 'Please write a message.'; return; }
+          send.disabled = true;
+          msg.textContent = 'Sending…';
+          try {
+            await postCommunity({ type: 'feedback', message: msgBox.value, contact: contact.value, version: APP_VERSION, website: trap.value });
+            track('feedback');
+            closeSheet();
+            showToast('Thanks for your feedback!');
+          } catch (e) {
+            send.disabled = false;
+            msg.textContent = e.message;
+          }
+        });
+        const cancel = el('button', 'sheet-cancel', 'Cancel');
+        cancel.type = 'button';
+        cancel.addEventListener('click', closeSheet);
+        panel.append(field('Message', msgBox), field('How can we reply? (optional)', contact), trap, msg, send, cancel);
+      });
+    }
+
+    // ---------- About and privacy ----------
+    function openAbout() {
+      openPanel('about', (panel) => {
+        const name = document.title;
+        panel.append(el('h2', null, 'About ' + name));
+        const section = (title, lines) => {
+          panel.append(el('h3', null, title));
+          const box = el('div', 'group about');
+          for (const l of lines) box.append(el('p', null, l));
+          panel.append(box);
+        };
+        section('What it does', [
+          name + ' is a free map for Singapore delivery riders: search places, get cycling, driving or walking routes with spoken directions, and see rain, traffic, parking, toilets and shelters.'
+        ]);
+        section('Your privacy', [
+          'Your location stays on your phone. It is used to show where you are and guide you, and is never stored.',
+          'To find places and routes, your search words, the middle of the map, and your start and end points are sent to our server and to the map services below, only to answer that request.',
+          'Saved and recent places, and your settings, are kept on your phone only.',
+          '"Closed for good" and "Add a missing place" store the place and its location, not who sent them.',
+          'Feedback stores what you write, and a contact only if you give one.',
+          'We count which features are used and how many people visit, without cookies and without identifying you.'
+        ]);
+        section('Data and map credits', [
+          'Map data © OpenStreetMap contributors. Map tiles: OpenFreeMap, © OpenMapTiles.',
+          'Addresses and routes: OneMap, © Singapore Land Authority.',
+          'Traffic incidents and car park availability: LTA DataMall.',
+          'Weather and heat stress: National Environment Agency, via data.gov.sg (Singapore Open Data Licence).',
+          'Business search: Photon by komoot, using OpenStreetMap data.'
+        ]);
+        section('Contact', ['Questions or problems? Use Send feedback and leave a way to reach you.']);
+        panel.append(el('p', 'sheet-note', 'Version ' + APP_VERSION));
+        const fb = el('button', 'sheet-cancel', 'Send feedback');
+        fb.type = 'button';
+        fb.addEventListener('click', openFeedback);
+        const done = el('button', 'sheet-done', 'Done');
+        done.type = 'button';
+        done.addEventListener('click', closeSheet);
+        panel.append(done, fb);
+      });
+    }
+
+    // ---------- welcome screen on first open ----------
+    function showWelcome() {
+      let seen = false;
+      try { seen = localStorage.getItem('welcomed') === '1'; } catch (e) { seen = true; }
+      if (seen) return;
+      openPanel('welcome', (panel) => {
+        const name = document.title;
+        panel.classList.add('welcome');
+        panel.append(el('h2', null, 'Welcome to ' + name));
+        panel.append(el('p', 'sheet-note', 'A free map made for Singapore delivery riders.'));
+        const points = el('div', 'group about');
+        for (const [icon, title, text] of [
+          ['🔎', 'Search anything', 'Places, postal codes, shops and food, plus places added by riders.'],
+          ['🧭', 'Routes with voice', 'Cycle, drive or walk, with spoken turn-by-turn directions.'],
+          ['🌧', 'Rain and heat alerts', 'Know before the rain hits, and when to drink water.'],
+          ['🅿️', 'Parking and more', 'Live free lots, toilets, water and shelters on the map.']]) {
+          const row = el('div', 'welcome-row');
+          const words = el('div');
+          words.append(el('strong', null, title), el('span', null, text));
+          row.append(el('span', 'welcome-icon', icon), words);
+          points.append(row);
+        }
+        panel.append(points);
+        panel.append(el('p', 'sheet-note', 'Your location stays on your phone and is never stored. It is only used to show where you are and guide you.'));
+        const finish = () => { save('welcomed', '1'); closeSheet(); };
+        const allow = el('button', 'sheet-done', 'Allow location');
+        allow.type = 'button';
+        allow.addEventListener('click', () => {
+          finish();
+          if (!('geolocation' in navigator)) return;
+          navigator.geolocation.getCurrentPosition((pos) => {
+            const { latitude, longitude } = pos.coords;
+            if (inSingapore(latitude, longitude)) map.flyTo({ center: [longitude, latitude], zoom: 15 });
+            track('welcome_location');
+          }, () => showToast('You can allow location later in your browser settings.'),
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+        });
+        panel.append(allow);
+        if (!isInstalled() && (installPrompt || isPhone)) {
+          const inst = el('button', 'sheet-cancel', 'Add to home screen');
+          inst.type = 'button';
+          inst.addEventListener('click', () => { finish(); onInstallClick(); });
+          panel.append(inst);
+        }
+        const later = el('button', 'sheet-cancel', 'Not now');
+        later.type = 'button';
+        later.addEventListener('click', finish);
+        panel.append(later);
+      });
     }
 
     // ---------- "Install" banner: put the app on the home screen ----------
@@ -1944,7 +2419,7 @@
         prompt.prompt();
         try {
           const choice = await prompt.userChoice;
-          if (choice && choice.outcome === 'accepted') hideInstall();
+          if (choice && choice.outcome === 'accepted') { hideInstall(); track('install'); }
         } catch (e) { /* ignore */ }
         return;
       }
