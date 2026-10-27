@@ -464,7 +464,7 @@
       ['any', ['in', CLS, ['literal', FOOD]], ['in', SUB, ['literal', FOOD]]], 'food',
       ['any', ['in', CLS, ['literal', SHOPS]], ['in', SUB, ['literal', SHOPS]]], 'shop',
       ['any', ['in', CLS, ['literal', SERVICES]], ['in', SUB, ['literal', SERVICES]]], 'service',
-      ['in', SUB, ['literal', ['toilets', 'drinking_water', 'shelter']]], 'amenity', // shown by their own layer
+      ['in', SUB, ['literal', ['toilets', 'drinking_water', 'shelter', 'parking', 'motorcycle_parking', 'bicycle_parking']]], 'amenity', // shown by their own layers
       'other'];
     const POI_NAME = ['coalesce', ['get', 'name:en'], ['get', 'name_en'], ['get', 'name']];
     const POI_BASE = ['all',
@@ -549,8 +549,8 @@
     const LAYER_LIST = [
       { id: 'rain',      label: 'Rain',               hint: 'Rain forecast for the next 2 hours, and where it is raining now', colour: '#007aff' },
       { id: 'incidents', label: 'Traffic incidents',  hint: 'Accidents, breakdowns and road works (LTA)', colour: '#ff3b30' },
-      { id: 'moto',      label: 'Motorcycle parking', hint: 'Free motorcycle lots right now. Zoom in to see them', colour: '#248a3d' },
-      { id: 'cars',      label: 'Car parking',        hint: 'Free car lots right now. Zoom in to see them', colour: '#5856d6' },
+      { id: 'moto',      label: 'Motorcycle parking', hint: 'Green numbers: free lots right now. Grey M: other motorcycle parking (no live count)', colour: '#248a3d' },
+      { id: 'cars',      label: 'Car parking',        hint: 'Purple numbers: free lots right now. Grey P: other car parks, incl. private (no live count)', colour: '#5856d6' },
       { id: 'toilet',    label: 'Toilets',            hint: 'Zoom in to see them', colour: '#a2845e' },
       { id: 'water',     label: 'Drinking water',     hint: 'Zoom in to see them', colour: '#32ade6' },
       { id: 'shelter',   label: 'Shelters',           hint: 'Bus stop and other shelters, to wait out the rain', colour: '#8e8e93' }
@@ -622,7 +622,7 @@
       moto: ['ov-moto-dot', 'ov-moto-num'],
       cars: ['ov-cars-dot', 'ov-cars-num']
     };
-    const OVERLAY_TAP = ['ov-incidents-dot', 'ov-moto-dot', 'ov-cars-dot', 'ov-amen-dot', 'ov-raining-dot', 'ov-rain-area'];
+    const OVERLAY_TAP = ['ov-incidents-dot', 'ov-moto-dot', 'ov-cars-dot', 'ov-osm-parking', 'ov-amen-dot', 'ov-raining-dot', 'ov-rain-area'];
     const RAIN_COLOUR = ['case', ['in', 'Thunder', ['get', 'forecast']], '#af52de',
                          ['in', 'Shower', ['get', 'forecast']], '#007aff', '#5ac8fa'];
 
@@ -655,6 +655,17 @@
         layout: { 'text-field': ['get', 'type'], 'text-font': font, 'text-size': 12, 'text-anchor': 'top', 'text-offset': [0, 1.1] },
         paint: labelPaint });
 
+      // Every other car park and motorcycle parking spot mapped on OpenStreetMap (incl. private ones):
+      // a grey P or M, location only. Drawn first so the live numbered dots sit on top.
+      map.addLayer({ id: 'ov-osm-parking', type: 'circle', source: 'openmaptiles', 'source-layer': 'poi', minzoom: 15,
+        filter: parkingFilter(), paint: {
+          'circle-radius': 9, 'circle-color': '#8e8e93', 'circle-stroke-width': 1.5, 'circle-stroke-color': edge } });
+      map.addLayer({ id: 'ov-osm-parking-letter', type: 'symbol', source: 'openmaptiles', 'source-layer': 'poi', minzoom: 15,
+        filter: parkingFilter(),
+        layout: { 'text-field': ['match', SUB, 'motorcycle_parking', 'M', 'P'], 'text-font': font, 'text-size': 11,
+                  'text-allow-overlap': true, 'text-ignore-placement': true },
+        paint: { 'text-color': '#ffffff' } });
+
       // Parking: a numbered dot per car park (motorcycles on the left, cars on the right)
       for (const [src, colour, shift] of [['ov-moto', '#248a3d', -12], ['ov-cars', '#5856d6', 12]]) {
         map.addLayer({ id: src + '-dot', type: 'circle', source: src, minzoom: 12, paint: {
@@ -674,6 +685,15 @@
           'circle-stroke-width': 1.5, 'circle-stroke-color': edge } });
     }
 
+    function parkingFilter() {
+      const types = [];
+      if (shownLayers.moto) types.push('motorcycle_parking');
+      if (shownLayers.cars) types.push('parking');
+      return ['all',
+        ['match', ['geometry-type'], ['Point', 'MultiPoint'], true, false],
+        ['in', SUB, ['literal', types.length ? types : ['none']]]];
+    }
+
     function amenityFilter() {
       const types = ['toilet', 'water', 'shelter'].filter((k) => shownLayers[k]).map((k) => AMENITY_TYPE[k]);
       return ['all',
@@ -684,6 +704,11 @@
     function applyOverlayVisibility() {
       for (const [group, ids] of Object.entries(GROUP_LAYERS)) {
         for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', shownLayers[group] ? 'visible' : 'none');
+      }
+      for (const id of ['ov-osm-parking', 'ov-osm-parking-letter']) {
+        if (!map.getLayer(id)) continue;
+        map.setLayoutProperty(id, 'visibility', shownLayers.moto || shownLayers.cars ? 'visible' : 'none');
+        map.setFilter(id, parkingFilter());
       }
       const anyAmenity = ['toilet', 'water', 'shelter'].some((k) => shownLayers[k]);
       if (map.getLayer('ov-amen-dot')) {
@@ -705,6 +730,11 @@
     function describeFeature(f) {
       const p = f.properties || {};
       const layerId = (f.layer && f.layer.id) || '';
+      if (layerId === 'ov-osm-parking') {
+        const isMoto = (p.subclass || p.class) === 'motorcycle_parking';
+        const kind = isMoto ? 'Motorcycle parking' : 'Car park';
+        return { name: p.name ? niceName(p.name) : kind, address: kind + ' · no live lot count', noRecent: true };
+      }
       if (layerId === 'ov-amen-dot') {
         const sub = p.subclass || p.class;
         if (sub === 'toilets') return { name: p.name || 'Toilet', address: 'Public toilet', noRecent: true };
@@ -751,6 +781,7 @@
         const px = map.project(c);
         let d = Math.hypot(px.x - p.x, px.y - p.y);
         if (f.layer && f.layer.id === 'ov-rain-area') d += 1000; // big rain circles lose to anything closer
+        if (f.layer && f.layer.id === 'ov-osm-parking') d += 8;   // live lot counts win over plain car park markers
         if (d < bestDistance) { bestDistance = d; best = Object.assign(place, { lng: c[0], lat: c[1] }); }
       }
       if (best) choose(best);
@@ -1507,7 +1538,7 @@
     // Short forms that stay in capitals
     const ACRONYMS = ['MRT', 'LRT', 'HDB', 'NTUC', 'SAFRA', 'NUS', 'NTU', 'SMU', 'SIT', 'SUTD', 'SUSS', 'ITE', 'CC',
                       'RC', 'JTC', 'PUB', 'NEA', 'LTA', 'URA', 'SGH', 'KKH', 'TTSH', 'NUH', 'CGH', 'SKH', 'KTPH', 'IMH',
-                      'YMCA', 'YWCA', 'ICA', 'MOE', 'CPF', 'IRAS', 'NLB', 'UOB', 'OCBC', 'DBS', 'POSB', 'ATM', 'PCN', 'SG'];
+                      'YMCA', 'YWCA', 'ICA', 'MOE', 'CPF', 'IRAS', 'NLB', 'UOB', 'OCBC', 'DBS', 'POSB', 'ATM', 'PCN', 'SG', 'HVP', 'FC'];
 
     // "BEDOK NTH AVE 1" -> "Bedok North Avenue 1"
     function niceStreet(s) {
