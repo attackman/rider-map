@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0b5fff" />
+  <meta name="theme-color" content="#f2f2f7" />
   <title>AskGoWhere</title>
 
   <!-- Install as an app -->
@@ -16,47 +16,87 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@^6.15.0/dist/maplibre-gl.css" />
+  <!-- Apple-style type: SF Pro on Apple devices; Inter (a free, very similar font) elsewhere -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap" />
   <style>
-    /* ---------- colours: light (default) and dark ---------- */
+    /* ---------- colours: iOS system colours, light (default) and dark ---------- */
     :root {
-      --panel: #ffffff;
-      --text: #111111;
-      --muted: #555555;
-      --line: #e6e8ec;
-      --chip: #eef1f5;
-      --chip-text: #333333;
-      --accent: #0b5fff;
-      --start-bg: #e5f4e4; --start-text: #1b6b1b;
-      --end-bg: #fbebeb;   --end-text: #a11d1d;
-      --me-bg: #e7f1fb;    --me-text: #0b5fff;
-      --error: #a11d1d;
-      --shadow: 0 2px 12px rgba(0,0,0,.28);
+      --bg: #f2f2f7;                              /* grouped background */
+      --panel: rgba(255, 255, 255, 0.86);         /* frosted "material" panels */
+      --panel-solid: #ffffff;
+      --cell: #ffffff;
+      --text: #000000;
+      --muted: rgba(60, 60, 67, 0.78);            /* secondary label (a little darker than iOS, for sun) */
+      --line: rgba(60, 60, 67, 0.18);             /* separators */
+      --chip: rgba(118, 118, 128, 0.12);          /* fills */
+      --chip-text: #000000;
+      --accent: #007aff;                          /* system blue */
+      --green: #34c759;
+      --red: #ff3b30;
+      --orange: #ff9500;
+      --tint-blue: rgba(0, 122, 255, 0.12);
+      --tint-green: rgba(52, 199, 89, 0.16);
+      --tint-red: rgba(255, 59, 48, 0.12);
+      --start-bg: var(--tint-green); --start-text: #248a3d;
+      --end-bg: var(--accent);       --end-text: #ffffff;
+      --me-bg: var(--tint-blue);     --me-text: var(--accent);
+      --error: #d70015;
+      --shadow: 0 8px 28px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
       --map-bg: #f2efe9;
       --seg-on: #ffffff;
-      --edge: transparent;
+      --edge: rgba(0, 0, 0, 0.04);
+      --grabber: rgba(60, 60, 67, 0.3);
+      --banner: #1c1c1e;
     }
     :root[data-theme="dark"] {
-      --panel: #1b1f26;
+      --bg: #000000;
+      --panel: rgba(30, 30, 32, 0.86);
+      --panel-solid: #1c1c1e;
+      --cell: #1c1c1e;
       --text: #ffffff;
-      --muted: #dde2ea;
-      --line: #2c323c;
-      --chip: #2a303a;
+      --muted: rgba(235, 235, 245, 0.82);         /* kept bright for night riding */
+      --line: rgba(84, 84, 88, 0.65);
+      --chip: rgba(118, 118, 128, 0.32);
       --chip-text: #ffffff;
-      --accent: #9cc2ff;
-      --start-bg: #1d3a24; --start-text: #b4f0c2;
-      --end-bg: #3d1f22;   --end-text: #ffc2c2;
-      --me-bg: #1f3050;    --me-text: #c4dbff;
-      --error: #ffc2c2;
-      --shadow: 0 2px 14px rgba(0,0,0,.6);
+      --accent: #0a84ff;
+      --green: #30d158;
+      --red: #ff453a;
+      --orange: #ff9f0a;
+      --tint-blue: rgba(10, 132, 255, 0.24);
+      --tint-green: rgba(48, 209, 88, 0.22);
+      --tint-red: rgba(255, 69, 58, 0.24);
+      --start-text: #4fe07a;
+      --error: #ff6961;
+      --shadow: 0 8px 28px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
       --map-bg: #1a1d21;
-      --seg-on: #3d4553;
-      --edge: #343b47;
+      --seg-on: #636366;
+      --edge: rgba(255, 255, 255, 0.08);
+      --grabber: rgba(235, 235, 245, 0.3);
+      --banner: #2c2c2e;
     }
 
     html, body { margin: 0; height: 100%; background: var(--map-bg); }
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text); }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+      font-optical-sizing: auto;
+      color: var(--text);
+      letter-spacing: -0.015em;
+      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    }
     #map { position: fixed; inset: 0; background: var(--map-bg); }
-    button { font-family: inherit; -webkit-tap-highlight-color: transparent; }
+    button { font-family: inherit; letter-spacing: inherit; -webkit-tap-highlight-color: transparent; }
+    button:active { opacity: 0.6; transition: opacity .05s; }
+
+    /* Frosted glass, like iOS panels; plain colour where the phone can't blur */
+    .search-box, .results, .install, .alert, .locate, .card, .toast {
+      -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+    }
+    @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+      :root { --panel: #ffffff; }
+      :root[data-theme="dark"] { --panel: #1c1c1e; }
+    }
 
     /* ---------- search bar ---------- */
     .search {
@@ -66,214 +106,243 @@
     }
     .search-box {
       display: flex; align-items: center; gap: 6px;
-      background: var(--panel); border-radius: 14px;
-      padding: 5px 5px 5px 16px; box-shadow: var(--shadow);
+      background: var(--panel); border-radius: 16px; border: 0.5px solid var(--edge);
+      padding: 5px 5px 5px 14px; box-shadow: var(--shadow);
+    }
+    .search-box::before {                          /* magnifying glass, like iOS search fields */
+      content: ''; flex: none; width: 18px; height: 18px; opacity: .6;
+      background: currentColor;
+      -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='m20 20-4.6-4.6'/%3E%3C/svg%3E") center / contain no-repeat;
+              mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='m20 20-4.6-4.6'/%3E%3C/svg%3E") center / contain no-repeat;
+      color: var(--muted);
     }
     .search-box input {
       flex: 1; min-width: 0; border: 0; outline: none;
-      font-size: 17px; /* 16px+ stops iPhone zooming in */
+      font: inherit; font-size: 17px; /* 16px+ stops iPhone zooming in */
       padding: 12px 0; background: transparent; color: var(--text);
     }
     .search-box input::placeholder { color: var(--muted); }
     .search-box input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
     .icon-btn {
-      flex: none; border: 0; background: var(--chip); color: var(--chip-text);
+      flex: none; border: 0; background: var(--chip); color: var(--accent);
       width: 48px; height: 48px; border-radius: 12px;
       font-size: 22px; line-height: 1; cursor: pointer;
     }
+    #clear { color: var(--muted); font-size: 24px; font-weight: 300; }
+    .icon-btn svg { width: 22px; height: 22px; display: block; margin: auto; }
+
+    /* Search results, saved and recent places: an iOS inset list */
     .results {
       list-style: none; margin: 8px 0 0; padding: 0;
-      background: var(--panel); border-radius: 14px; box-shadow: var(--shadow);
+      background: var(--panel); border-radius: 16px; box-shadow: var(--shadow); border: 0.5px solid var(--edge);
       max-height: 55vh; overflow-y: auto;
     }
     .results:empty { display: none; }
+    .results li {
+      padding: 12px 16px; min-height: 28px; cursor: pointer; position: relative;
+    }
+    .results li + li::before {                     /* hairline separator, inset like iOS */
+      content: ''; position: absolute; top: 0; left: 16px; right: 0; border-top: 0.5px solid var(--line);
+    }
+    .results li.section + li::before, .results li.section::before { display: none; }
+    .results li:active { background: var(--chip); }
+    .results .name { font-weight: 600; font-size: 17px; color: var(--text); }
+    .results .addr { font-size: 15px; color: var(--muted); margin-top: 2px; }
+    .results .msg { color: var(--muted); cursor: default; }
+    .results .tag {
+      display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 6px;
+      background: var(--tint-blue); color: var(--accent); font-size: 12px; font-weight: 600;
+    }
+    .results li.section {
+      padding: 12px 16px 4px; min-height: 0; font-size: 13px; font-weight: 400;
+      color: var(--muted); text-transform: uppercase; letter-spacing: 0; cursor: default;
+    }
+    .results .mark { margin-right: 8px; color: var(--orange); }
 
     /* "Install app" banner under the search bar */
     .install {
       display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px;
-      background: var(--panel); color: var(--text); border-radius: 14px;
-      padding: 8px 6px 8px 14px; box-shadow: var(--shadow); border: 1px solid var(--edge);
+      background: var(--panel); color: var(--text); border-radius: 16px; border: 0.5px solid var(--edge);
+      padding: 8px 6px 8px 14px; box-shadow: var(--shadow);
     }
     .install[hidden] { display: none; }
     .install-text { flex: 1; min-width: 0; font-size: 15px; line-height: 1.35; }
-    .install-text strong { display: block; font-size: 16px; }
-    .install-text span { color: var(--muted); font-size: 14px; }
+    .install-text strong { display: block; font-size: 17px; font-weight: 600; }
+    .install-text span { color: var(--muted); font-size: 15px; }
     .install-btn {
-      border: 0; border-radius: 12px; min-height: 46px; padding: 0 18px;
-      background: #0b5fff; color: #ffffff; font-size: 16px; font-weight: 700; cursor: pointer;
+      border: 0; border-radius: 999px; min-height: 44px; padding: 0 20px;
+      background: var(--accent); color: #ffffff; font-size: 17px; font-weight: 600; cursor: pointer;
     }
     .install-close {
       border: 0; background: transparent; color: var(--muted);
-      width: 44px; height: 46px; font-size: 24px; cursor: pointer;
+      width: 44px; height: 44px; font-size: 24px; font-weight: 300; cursor: pointer;
     }
     .install-steps { flex-basis: 100%; margin: 2px 0 4px; padding-left: 22px; font-size: 15px; line-height: 1.5; }
 
-    /* Rain and heat alerts under the search bar */
+    /* Rain and heat alerts: like iOS notification banners */
     .alerts:empty { display: none; }
     .alert {
       display: flex; align-items: center; gap: 6px; margin-top: 8px;
-      border-radius: 14px; padding: 6px 4px 6px 12px; box-shadow: var(--shadow);
-      font-size: 15px; line-height: 1.35; font-weight: 600;
+      border-radius: 16px; padding: 8px 4px 8px 14px; box-shadow: var(--shadow); border: 0.5px solid var(--edge);
+      font-size: 15px; line-height: 1.35; font-weight: 500;
     }
-    .alert-rain { background: #e3eeff; color: #123a8f; }
-    .alert-heat { background: #fff0dc; color: #8a3a00; }
-    :root[data-theme="dark"] .alert-rain { background: #1c2f57; color: #d6e4ff; }
-    :root[data-theme="dark"] .alert-heat { background: #4a2a10; color: #ffe0bf; }
+    .alert-rain { background: rgba(227, 238, 255, 0.92); color: #0a3d91; }
+    .alert-heat { background: rgba(255, 240, 222, 0.92); color: #8a4500; }
+    :root[data-theme="dark"] .alert-rain { background: rgba(14, 37, 71, 0.92); color: #d6e6ff; }
+    :root[data-theme="dark"] .alert-heat { background: rgba(58, 36, 8, 0.92); color: #ffe2bf; }
     .alert-text { flex: 1; min-width: 0; cursor: pointer; padding: 4px 0; }
     .alert-close {
-      border: 0; background: transparent; color: inherit; opacity: .75;
-      width: 44px; height: 44px; font-size: 22px; cursor: pointer; flex: none;
+      border: 0; background: transparent; color: inherit; opacity: .7;
+      width: 44px; height: 44px; font-size: 22px; font-weight: 300; cursor: pointer; flex: none;
     }
 
-    /* Saved and recent places in the search list */
-    .results li.section {
-      padding: 10px 16px 4px; min-height: 0; font-size: 13px; font-weight: 700;
-      color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: default; border-bottom: 0;
-    }
-    .results .mark { margin-right: 6px; }
-    .card .row .btn-star { flex: 0 0 64px; background: var(--chip); color: #e0a100; font-size: 26px; }
-
-    /* Layers and alerts sheet */
-    .sheet { position: fixed; inset: 0; z-index: 8; background: rgba(0,0,0,.35); }
+    /* ---------- layers and alerts sheet: an iOS bottom sheet with grouped lists ---------- */
+    .sheet { position: fixed; inset: 0; z-index: 8; background: rgba(0, 0, 0, 0.32); }
     .sheet[hidden] { display: none; }
     .sheet-panel {
-      position: absolute; left: 0; right: 0; bottom: 0; max-height: 85vh; overflow-y: auto;
-      background: var(--panel); color: var(--text); border-radius: 20px 20px 0 0;
-      padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 16px); box-shadow: var(--shadow);
+      position: absolute; left: 0; right: 0; bottom: 0; max-height: 88vh; overflow-y: auto;
+      background: var(--bg); color: var(--text); border-radius: 14px 14px 0 0;
+      padding: 8px 16px calc(env(safe-area-inset-bottom, 0px) + 16px); box-shadow: var(--shadow);
     }
-    .sheet h2 { margin: 0 0 6px; font-size: 20px; }
-    .sheet h3 { margin: 16px 0 4px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .sheet-panel::before {                         /* grabber handle */
+      content: ''; display: block; width: 36px; height: 5px; border-radius: 3px;
+      background: var(--grabber); margin: 0 auto 12px;
+    }
+    .sheet h2 { margin: 0 0 12px 4px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+    .sheet h3 { margin: 20px 0 6px 16px; font-size: 13px; font-weight: 400; color: var(--muted); text-transform: uppercase; letter-spacing: 0; }
+    .group { background: var(--cell); border-radius: 12px; overflow: hidden; }
     .toggle {
-      display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px;
-      border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--text);
-      text-align: left; padding: 8px 0; cursor: pointer; font-size: 16px;
+      display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; position: relative;
+      border: 0; background: transparent; color: var(--text);
+      text-align: left; padding: 8px 16px; cursor: pointer; font-size: 17px;
     }
-    .toggle .swatch { width: 14px; height: 14px; border-radius: 50%; flex: none; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--line); }
+    .toggle + .toggle::before {
+      content: ''; position: absolute; top: 0; left: 42px; right: 0; border-top: 0.5px solid var(--line);
+    }
+    .toggle:not(:has(.swatch)) + .toggle::before, .group-alerts .toggle + .toggle::before { left: 16px; }
+    .toggle:active { opacity: 1; background: var(--chip); }
+    .toggle .swatch { width: 14px; height: 14px; border-radius: 50%; flex: none; }
     .toggle .words { flex: 1; min-width: 0; }
-    .toggle .label { font-weight: 700; display: block; }
+    .toggle .label { font-weight: 400; display: block; }
     .toggle .hint { font-size: 13px; color: var(--muted); display: block; margin-top: 2px; }
     .toggle .hint.bad { color: var(--error); }
-    .switch { flex: none; width: 50px; height: 30px; border-radius: 15px; background: var(--chip); position: relative; transition: background .2s; }
-    .switch::after {
-      content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%;
-      background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .2s;
+    .switch {                                      /* iOS switch: 51 x 31 */
+      flex: none; width: 51px; height: 31px; border-radius: 16px; background: var(--chip);
+      position: relative; transition: background .25s;
     }
-    .toggle[aria-checked="true"] .switch { background: #1b9e3e; }
+    .switch::after {
+      content: ''; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%;
+      background: #ffffff; box-shadow: 0 3px 8px rgba(0,0,0,.15), 0 3px 1px rgba(0,0,0,.06);
+      transition: transform .25s cubic-bezier(.3,.7,.4,1.1);
+    }
+    .toggle[aria-checked="true"] .switch { background: var(--green); }
     .toggle[aria-checked="true"] .switch::after { transform: translateX(20px); }
     .sheet-done {
-      width: 100%; margin-top: 16px; min-height: 54px; border: 0; border-radius: 14px;
-      background: #0b5fff; color: #ffffff; font-size: 17px; font-weight: 700; cursor: pointer;
-    }
-    .results li { padding: 14px 16px; min-height: 28px; border-bottom: 1px solid var(--line); cursor: pointer; }
-    .results li:last-child { border-bottom: 0; }
-    .results li:active { background: var(--chip); }
-    .results .name { font-weight: 600; font-size: 16px; color: var(--text); }
-    .results .addr { font-size: 14px; color: var(--muted); margin-top: 3px; }
-    .results .msg { color: var(--muted); cursor: default; }
-    .results .tag {
-      display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 10px;
-      background: var(--chip); color: var(--chip-text); font-size: 12px; font-weight: 600;
+      width: 100%; margin-top: 20px; min-height: 52px; border: 0; border-radius: 14px;
+      background: var(--accent); color: #ffffff; font-size: 17px; font-weight: 600; cursor: pointer;
     }
 
     /* ---------- floating "start from my location" ---------- */
     .locate {
       position: fixed; left: 12px;
       bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
-      z-index: 4; border: 0; border-radius: 28px;
+      z-index: 4; border: 0.5px solid var(--edge); border-radius: 999px;
       background: var(--panel); color: var(--accent);
-      min-height: 56px; padding: 0 20px; font-size: 17px; font-weight: 700;
+      min-height: 54px; padding: 0 20px; font-size: 17px; font-weight: 600;
       box-shadow: var(--shadow); cursor: pointer;
     }
     .locate[hidden] { display: none; }
 
     /* ---------- bottom card ---------- */
     .card {
-      position: fixed; left: 10px; right: 10px;
-      bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+      position: fixed; left: 8px; right: 8px;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
       background: var(--panel); color: var(--text);
-      border-radius: 18px; padding: 14px; box-shadow: var(--shadow); z-index: 5;
-      border: 1px solid var(--edge);
+      border-radius: 24px; padding: 16px; box-shadow: var(--shadow); z-index: 5;
+      border: 0.5px solid var(--edge);
     }
     .card[hidden] { display: none; }
-    .card .place { font-weight: 700; font-size: 18px; }
+    .card .place { font-weight: 700; font-size: 22px; letter-spacing: -0.02em; line-height: 1.2; }
     .card .sub { font-size: 15px; color: var(--muted); margin-top: 3px; }
-    .card .row { display: flex; gap: 10px; margin-top: 12px; }
+    .card .row { display: flex; gap: 10px; margin-top: 14px; }
     .card .row button {
-      flex: 1; border: 0; border-radius: 14px; min-height: 56px; padding: 0 10px;
-      font-size: 17px; font-weight: 700; cursor: pointer;
+      flex: 1; border: 0; border-radius: 14px; min-height: 54px; padding: 0 10px;
+      font-size: 17px; font-weight: 600; cursor: pointer;
     }
-    .btn-start { background: var(--start-bg); color: var(--start-text); }
-    .btn-end   { background: var(--end-bg);   color: var(--end-text); }
-    .btn-clear { background: var(--chip);     color: var(--chip-text); flex: 0 0 34% !important; }
+    .btn-start    { background: var(--start-bg); color: var(--start-text); }
+    .btn-end      { background: var(--end-bg);   color: var(--end-text); }
+    .btn-clear    { background: var(--chip);     color: var(--chip-text); flex: 0 0 34% !important; }
     .btn-clear:only-child { flex: 1 !important; }
-    .icon-btn svg { width: 24px; height: 24px; display: block; margin: auto; }
-    .btn-me    { background: var(--me-bg);    color: var(--me-text); }
-    button:active { filter: brightness(.92); }
+    .btn-me       { background: var(--me-bg);    color: var(--me-text); }
+    .btn-go       { background: var(--green);    color: #ffffff; }
+    .btn-end-ride { background: var(--red);      color: #ffffff; }
+    .card .row .btn-star  { flex: 0 0 56px; background: var(--chip); color: var(--orange); font-size: 24px; }
+    .card .row .btn-voice { flex: 0 0 56px; background: var(--chip); color: var(--chip-text); font-size: 22px; }
 
-    /* Cycle / Drive / Walk switch */
+    /* Cycle / Drive / Walk: an iOS segmented control */
     .modes {
-      display: flex; background: var(--chip); border-radius: 14px; padding: 4px; gap: 4px;
-      margin-bottom: 12px;
+      display: flex; background: var(--chip); border-radius: 10px; padding: 2px; gap: 2px;
+      margin-bottom: 14px;
     }
     .modes button {
-      flex: 1; border: 0; border-radius: 11px; min-height: 48px;
-      font-size: 16px; font-weight: 700; background: transparent; color: var(--muted); cursor: pointer;
+      flex: 1; border: 0; border-radius: 8px; min-height: 48px;
+      font-size: 15px; font-weight: 500; background: transparent; color: var(--text); cursor: pointer;
     }
-    .modes button.on { background: var(--seg-on); color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+    .modes button.on {
+      background: var(--seg-on); font-weight: 600;
+      box-shadow: 0 3px 8px rgba(0,0,0,.12), 0 3px 1px rgba(0,0,0,.04);
+    }
+    .modes button:active { opacity: 1; }
 
-    .trip { font-size: 16px; line-height: 1.6; }
-    .trip .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
-    .summary { font-size: 28px; font-weight: 800; margin-top: 8px; }
-    .summary small { font-size: 16px; font-weight: 600; color: var(--muted); }
+    .trip { font-size: 17px; line-height: 1.6; }
+    .trip .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 10px; }
+    .summary { font-size: 30px; font-weight: 700; margin-top: 8px; letter-spacing: -0.025em; }
+    .summary small { font-size: 17px; font-weight: 500; color: var(--muted); letter-spacing: -0.015em; }
     .wake { font-size: 13px; color: var(--muted); margin-top: 4px; }
     .wake:empty { display: none; }
     .error { color: var(--error); font-size: 15px; margin-top: 8px; }
 
-    /* Ride buttons */
-    .btn-go       { background: #1b9e3e; color: #ffffff; }
-    .btn-end-ride { background: var(--end-bg); color: var(--end-text); }
-
-    .card .row .btn-voice { flex: 0 0 64px; background: var(--chip); color: var(--chip-text); font-size: 24px; }
-
-    /* Next-turn banner while riding */
+    /* Next-turn banner while riding, like Apple Maps: distance big, street below */
     .next {
-      display: flex; align-items: center; gap: 12px;
-      background: #0b5fff; color: #ffffff; border-radius: 14px; padding: 10px 14px; margin-bottom: 12px;
+      display: flex; align-items: center; gap: 14px;
+      background: var(--banner); color: #ffffff; border-radius: 18px; padding: 12px 16px; margin-bottom: 14px;
     }
-    :root[data-theme="dark"] .next { background: #2f5fcf; }
-    .next-icon { flex: none; width: 44px; height: 44px; transition: transform .3s; }
-    .next-icon svg { width: 44px; height: 44px; display: block; }
-    .next-what { font-size: 19px; font-weight: 800; line-height: 1.25; }
-    .next-dist { font-size: 16px; font-weight: 600; opacity: .92; margin-top: 2px; }
+    .next-icon { flex: none; width: 46px; height: 46px; transition: transform .3s; }
+    .next-icon svg { width: 46px; height: 46px; display: block; }
+    .next-words { display: flex; flex-direction: column-reverse; }
+    .next-dist { font-size: 28px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.1; }
+    .next-what { font-size: 17px; font-weight: 500; line-height: 1.3; opacity: .92; }
+    .next-words .next-what:only-child { font-size: 20px; font-weight: 600; opacity: 1; }
 
-    /* The rider's moving dot with a direction arrow */
+    /* The rider's location dot, Apple-style blue with a soft halo */
     .me { width: 30px; height: 30px; position: relative; }
     .me-dot {
       position: absolute; inset: 6px; border-radius: 50%;
-      background: #0b5fff; border: 3px solid #ffffff; box-sizing: border-box;
-      box-shadow: 0 0 0 6px rgba(11,95,255,.22), 0 1px 4px rgba(0,0,0,.4);
+      background: #007aff; border: 3px solid #ffffff; box-sizing: border-box;
+      box-shadow: 0 0 0 7px rgba(0,122,255,.18), 0 1px 4px rgba(0,0,0,.35);
     }
     .me-rot { position: absolute; inset: 0; transition: transform .4s; }
     .me-arrow {
       position: absolute; left: 50%; top: -9px; margin-left: -7px;
       width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent;
-      border-bottom: 11px solid #0b5fff;
+      border-bottom: 11px solid #007aff;
     }
 
-    /* Short message at the top, e.g. "Dark mode" */
+    /* Short message at the top, e.g. "Saved": an iOS-style HUD */
     .toast {
       position: fixed; left: 50%; transform: translateX(-50%);
       top: calc(env(safe-area-inset-top, 0px) + 80px);
-      background: var(--text); color: var(--panel);
-      padding: 10px 16px; border-radius: 20px; font-size: 15px; font-weight: 600;
+      background: rgba(30, 30, 32, 0.82); color: #ffffff;
+      padding: 10px 18px; border-radius: 14px; font-size: 15px; font-weight: 500;
       z-index: 6; opacity: 0; transition: opacity .2s; pointer-events: none;
     }
-    .toast.show { opacity: .94; }
+    .toast.show { opacity: 1; }
 
-    /* Bigger +/- map buttons, readable in dark mode */
+    /* Map +/- buttons and credits, matched to the panels */
+    .maplibregl-ctrl-group { border-radius: 12px !important; overflow: hidden; box-shadow: var(--shadow) !important; }
     .maplibregl-ctrl-group button { width: 44px !important; height: 44px !important; }
     :root[data-theme="dark"] .maplibregl-ctrl-group { filter: invert(.9) hue-rotate(180deg); }
-    :root[data-theme="dark"] .maplibregl-ctrl-attrib { background: rgba(27,31,38,.8); color: #ccc; }
+    :root[data-theme="dark"] .maplibregl-ctrl-attrib { background: rgba(28,28,30,.8); color: #ccc; }
     :root[data-theme="dark"] .maplibregl-ctrl-attrib a { color: #ccc; }
   </style>
 </head>
@@ -282,7 +351,7 @@
 
   <div class="search">
     <div class="search-box">
-      <input id="q" type="search" placeholder="Search places or postal code"
+      <input id="q" type="search" placeholder="Search places"
              autocomplete="off" enterkeyhint="search" aria-label="Search places" />
       <button id="layers" class="icon-btn" type="button" aria-label="Map layers and alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 13 10 5 10-5"/><path d="m2 17.5 10 5 10-5" opacity=".5"/></svg></button>
       <button id="theme" class="icon-btn" type="button" aria-label="Change light or dark mode"></button>
@@ -302,8 +371,8 @@
   <script type="module">
     import * as maplibregl from 'https://unpkg.com/maplibre-gl@^6.15.0/dist/maplibre-gl.mjs';
 
-    const START_COLOUR = '#1b9e3e';
-    const END_COLOUR = '#d62828';
+    const START_COLOUR = '#34c759';
+    const END_COLOUR = '#ff3b30';
 
     const MAP_STYLES = {
       light: 'https://tiles.openfreemap.org/styles/liberty',
@@ -312,9 +381,9 @@
 
     // Route colours, brighter versions for the dark map
     const MODES = {
-      cycle: { label: 'Cycle', words: 'by bicycle', light: '#0b5fff', dark: '#5b95ff' },
-      drive: { label: 'Drive', words: 'by car',     light: '#7a3cff', dark: '#b48cff' },
-      walk:  { label: 'Walk',  words: 'on foot',    light: '#0a8a7a', dark: '#2fd1b5' }
+      cycle: { label: 'Cycle', words: 'by bicycle', light: '#007aff', dark: '#3d9bff' },
+      drive: { label: 'Drive', words: 'by car',     light: '#5856d6', dark: '#8f8cff' },
+      walk:  { label: 'Walk',  words: 'on foot',    light: '#30b0c7', dark: '#40c8e0' }
     };
 
     // ---------- saved settings (this phone only) ----------
@@ -348,7 +417,7 @@
 
     function applyThemeToPage() {
       document.documentElement.dataset.theme = theme;
-      document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#1b1f26' : '#0b5fff';
+      document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#000000' : '#f2f2f7';
       themeBtn.innerHTML = THEME_ICONS[themeSetting]; // fixed icons defined below, no user text
       themeBtn.dataset.setting = themeSetting;
     }
@@ -395,6 +464,7 @@
       ['any', ['in', CLS, ['literal', FOOD]], ['in', SUB, ['literal', FOOD]]], 'food',
       ['any', ['in', CLS, ['literal', SHOPS]], ['in', SUB, ['literal', SHOPS]]], 'shop',
       ['any', ['in', CLS, ['literal', SERVICES]], ['in', SUB, ['literal', SERVICES]]], 'service',
+      ['in', SUB, ['literal', ['toilets', 'drinking_water', 'shelter']]], 'amenity', // shown by their own layer
       'other'];
     const POI_NAME = ['coalesce', ['get', 'name:en'], ['get', 'name_en'], ['get', 'name']];
     const POI_BASE = ['all',
@@ -444,7 +514,7 @@
             'circle-radius': g.radius,
             'circle-color': KIND_COLOURS,
             'circle-stroke-width': 1.5,
-            'circle-stroke-color': theme === 'dark' ? '#1b1f26' : '#ffffff'
+            'circle-stroke-color': theme === 'dark' ? '#1c1c1e' : '#ffffff'
           }
         });
         map.addLayer({
@@ -477,16 +547,18 @@
     }
 
     const LAYER_LIST = [
-      { id: 'rain',      label: 'Rain',               hint: 'Rain forecast for the next 2 hours, and where it is raining now', colour: '#2f6bff' },
-      { id: 'incidents', label: 'Traffic incidents',  hint: 'Accidents, breakdowns and road works (LTA)', colour: '#e11d48' },
-      { id: 'moto',      label: 'Motorcycle parking', hint: 'Free motorcycle lots right now. Zoom in to see them', colour: '#0f9d77' },
-      { id: 'cars',      label: 'Car parking',        hint: 'Free car lots right now. Zoom in to see them', colour: '#2563eb' },
-      { id: 'toilet',    label: 'Toilets',            hint: 'Zoom in to see them', colour: '#8b5e34' },
-      { id: 'water',     label: 'Drinking water',     hint: 'Zoom in to see them', colour: '#06b6d4' },
-      { id: 'shelter',   label: 'Shelters',           hint: 'Bus stop and other shelters, to wait out the rain', colour: '#64748b' }
+      { id: 'rain',      label: 'Rain',               hint: 'Rain forecast for the next 2 hours, and where it is raining now', colour: '#007aff' },
+      { id: 'incidents', label: 'Traffic incidents',  hint: 'Accidents, breakdowns and road works (LTA)', colour: '#ff3b30' },
+      { id: 'moto',      label: 'Motorcycle parking', hint: 'Free motorcycle lots right now. Zoom in to see them', colour: '#248a3d' },
+      { id: 'cars',      label: 'Car parking',        hint: 'Free car lots right now. Zoom in to see them', colour: '#5856d6' },
+      { id: 'toilet',    label: 'Toilets',            hint: 'Zoom in to see them', colour: '#a2845e' },
+      { id: 'water',     label: 'Drinking water',     hint: 'Zoom in to see them', colour: '#32ade6' },
+      { id: 'shelter',   label: 'Shelters',           hint: 'Bus stop and other shelters, to wait out the rain', colour: '#8e8e93' }
     ];
     const FEED_FOR = { rain: 'weather', incidents: 'incidents', moto: 'carparks', cars: 'carparks',
-                       toilet: 'amenities', water: 'amenities', shelter: 'amenities' };
+                       toilet: null, water: null, shelter: null };   // these come straight from the map tiles
+    // Map layer types for toilets, drinking water and shelters inside the map tiles (OpenStreetMap)
+    const AMENITY_TYPE = { toilet: 'toilets', water: 'drinking_water', shelter: 'shelter' };
     const shownLayers = Object.assign({}, loadJson('layers', {}));
     const alertSettings = Object.assign({ rain: true, heat: true }, loadJson('alertSettings', {}));
 
@@ -520,15 +592,15 @@
     }
 
     function refreshShownLayers() {
-      for (const L of LAYER_LIST) if (shownLayers[L.id]) loadFeed(FEED_FOR[L.id]);
+      for (const L of LAYER_LIST) if (shownLayers[L.id] && FEED_FOR[L.id]) loadFeed(FEED_FOR[L.id]);
     }
 
     const pointFeature = (lng, lat, props) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: props });
     const collection = (features) => ({ type: 'FeatureCollection', features });
-    const OVERLAY_SOURCES = ['ov-rain', 'ov-raining', 'ov-incidents', 'ov-moto', 'ov-cars', 'ov-amen'];
+    const OVERLAY_SOURCES = ['ov-rain', 'ov-raining', 'ov-incidents', 'ov-moto', 'ov-cars'];
 
     function overlayData(id) {
-      const w = feeds.weather.data, inc = feeds.incidents.data, cp = feeds.carparks.data, am = feeds.amenities.data;
+      const w = feeds.weather.data, inc = feeds.incidents.data, cp = feeds.carparks.data;
       const lots = (vehicle, t) => collection(cp && cp.carparks ? cp.carparks.filter((c) => c.vehicle === vehicle)
         .map((c) => pointFeature(c.lng, c.lat, { t, name: c.name, lots: c.lots, agency: c.agency })) : []);
       switch (id) {
@@ -540,9 +612,6 @@
           .map((i) => pointFeature(i.lng, i.lat, { t: 'incident', type: i.type, message: i.message })) : []);
         case 'ov-moto': return lots('motorcycle', 'moto');
         case 'ov-cars': return lots('car', 'car');
-        case 'ov-amen': return collection(am && am.places ? am.places
-          .map((p) => pointFeature(p.lng, p.lat, { t: p.kind, name: p.name, busStop: !!p.busStop,
-            fee: p.fee === null || p.fee === undefined ? '' : (p.fee ? 'yes' : 'no'), wheelchair: !!p.wheelchair })) : []);
       }
       return collection([]);
     }
@@ -554,12 +623,12 @@
       cars: ['ov-cars-dot', 'ov-cars-num']
     };
     const OVERLAY_TAP = ['ov-incidents-dot', 'ov-moto-dot', 'ov-cars-dot', 'ov-amen-dot', 'ov-raining-dot', 'ov-rain-area'];
-    const RAIN_COLOUR = ['case', ['in', 'Thunder', ['get', 'forecast']], '#7b4dff',
-                         ['in', 'Shower', ['get', 'forecast']], '#2f6bff', '#4fa3ff'];
+    const RAIN_COLOUR = ['case', ['in', 'Thunder', ['get', 'forecast']], '#af52de',
+                         ['in', 'Shower', ['get', 'forecast']], '#007aff', '#5ac8fa'];
 
     function addOverlayLayers() {
       for (const id of OVERLAY_SOURCES) map.addSource(id, { type: 'geojson', data: overlayData(id) });
-      const edge = theme === 'dark' ? '#1b1f26' : '#ffffff';
+      const edge = theme === 'dark' ? '#1c1c1e' : '#ffffff';
       const labelPaint = { 'text-color': theme === 'dark' ? '#f4f6fa' : '#1f2937',
                            'text-halo-color': theme === 'dark' ? '#0e1116' : '#ffffff', 'text-halo-width': 1.4 };
       const font = ['Noto Sans Regular'];
@@ -573,7 +642,7 @@
         layout: { 'text-field': ['get', 'forecast'], 'text-font': font, 'text-size': 13, 'text-max-width': 8 },
         paint: labelPaint });
       map.addLayer({ id: 'ov-raining-dot', type: 'circle', source: 'ov-raining', paint: {
-        'circle-radius': 6, 'circle-color': '#1d4ed8', 'circle-stroke-width': 2, 'circle-stroke-color': edge } });
+        'circle-radius': 6, 'circle-color': '#0071e3', 'circle-stroke-width': 2, 'circle-stroke-color': edge } });
       map.addLayer({ id: 'ov-raining-mm', type: 'symbol', source: 'ov-raining', minzoom: 12,
         layout: { 'text-field': ['concat', ['to-string', ['get', 'mm']], ' mm'], 'text-font': font, 'text-size': 11,
                   'text-anchor': 'top', 'text-offset': [0, 0.9] },
@@ -581,13 +650,13 @@
 
       // Traffic incidents
       map.addLayer({ id: 'ov-incidents-dot', type: 'circle', source: 'ov-incidents', paint: {
-        'circle-radius': 9, 'circle-color': '#e11d48', 'circle-stroke-width': 2.5, 'circle-stroke-color': edge } });
+        'circle-radius': 9, 'circle-color': '#ff3b30', 'circle-stroke-width': 2.5, 'circle-stroke-color': edge } });
       map.addLayer({ id: 'ov-incidents-name', type: 'symbol', source: 'ov-incidents', minzoom: 12,
         layout: { 'text-field': ['get', 'type'], 'text-font': font, 'text-size': 12, 'text-anchor': 'top', 'text-offset': [0, 1.1] },
         paint: labelPaint });
 
       // Parking: a numbered dot per car park (motorcycles on the left, cars on the right)
-      for (const [src, colour, shift] of [['ov-moto', '#0f9d77', -12], ['ov-cars', '#2563eb', 12]]) {
+      for (const [src, colour, shift] of [['ov-moto', '#248a3d', -12], ['ov-cars', '#5856d6', 12]]) {
         map.addLayer({ id: src + '-dot', type: 'circle', source: src, minzoom: 12, paint: {
           'circle-radius': 11, 'circle-color': ['case', ['>', ['get', 'lots'], 0], colour, '#9aa3ad'],
           'circle-stroke-width': 2, 'circle-stroke-color': edge, 'circle-translate': [shift, 0] } });
@@ -597,21 +666,29 @@
           paint: { 'text-color': '#ffffff', 'text-translate': [shift, 0] } });
       }
 
-      // Toilets, drinking water, shelters
-      map.addLayer({ id: 'ov-amen-dot', type: 'circle', source: 'ov-amen', minzoom: 14, paint: {
-        'circle-radius': 6.5,
-        'circle-color': ['match', ['get', 't'], 'toilet', '#8b5e34', 'water', '#06b6d4', '#64748b'],
-        'circle-stroke-width': 1.5, 'circle-stroke-color': edge } });
+      // Toilets, drinking water, shelters: read straight from the map tiles, so they appear instantly
+      map.addLayer({ id: 'ov-amen-dot', type: 'circle', source: 'openmaptiles', 'source-layer': 'poi', minzoom: 14,
+        filter: amenityFilter(), paint: {
+          'circle-radius': 6.5,
+          'circle-color': ['match', SUB, 'toilets', '#a2845e', 'drinking_water', '#32ade6', '#8e8e93'],
+          'circle-stroke-width': 1.5, 'circle-stroke-color': edge } });
+    }
+
+    function amenityFilter() {
+      const types = ['toilet', 'water', 'shelter'].filter((k) => shownLayers[k]).map((k) => AMENITY_TYPE[k]);
+      return ['all',
+        ['match', ['geometry-type'], ['Point', 'MultiPoint'], true, false],
+        ['in', SUB, ['literal', types.length ? types : ['none']]]];
     }
 
     function applyOverlayVisibility() {
       for (const [group, ids] of Object.entries(GROUP_LAYERS)) {
         for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', shownLayers[group] ? 'visible' : 'none');
       }
-      const kinds = ['toilet', 'water', 'shelter'].filter((k) => shownLayers[k]);
+      const anyAmenity = ['toilet', 'water', 'shelter'].some((k) => shownLayers[k]);
       if (map.getLayer('ov-amen-dot')) {
-        map.setLayoutProperty('ov-amen-dot', 'visibility', kinds.length ? 'visible' : 'none');
-        map.setFilter('ov-amen-dot', ['in', ['get', 't'], ['literal', kinds.length ? kinds : ['none']]]);
+        map.setLayoutProperty('ov-amen-dot', 'visibility', anyAmenity ? 'visible' : 'none');
+        map.setFilter('ov-amen-dot', amenityFilter());
       }
     }
 
@@ -628,6 +705,12 @@
     function describeFeature(f) {
       const p = f.properties || {};
       const layerId = (f.layer && f.layer.id) || '';
+      if (layerId === 'ov-amen-dot') {
+        const sub = p.subclass || p.class;
+        if (sub === 'toilets') return { name: p.name || 'Toilet', address: 'Public toilet', noRecent: true };
+        if (sub === 'drinking_water') return { name: p.name || 'Drinking water', address: 'Drinking water tap or fountain', noRecent: true };
+        return { name: p.name || 'Shelter', address: 'Covered shelter, cover from rain', noRecent: true };
+      }
       if (!layerId.startsWith('ov-')) {
         const name = p['name:en'] || p.name_en || p.name;
         return name ? { name, address: poiCategory(p) } : null;
@@ -635,8 +718,8 @@
       const lotWords = (n, what) => n + ' ' + what + ' lot' + (Number(n) === 1 ? '' : 's') + ' free now' + (p.agency ? ' · ' + p.agency : '');
       switch (p.t) {
         case 'incident': return { name: p.type, address: p.message, noRecent: true };
-        case 'moto': return { name: p.name, address: lotWords(p.lots, 'motorcycle'), noRecent: true };
-        case 'car': return { name: p.name, address: lotWords(p.lots, 'car'), noRecent: true };
+        case 'moto': return { name: niceName(p.name), address: lotWords(p.lots, 'motorcycle'), noRecent: true };
+        case 'car': return { name: niceName(p.name), address: lotWords(p.lots, 'car'), noRecent: true };
         case 'toilet': return { name: p.name || 'Toilet', noRecent: true,
           address: ['Toilet', p.fee === 'yes' ? 'Paid' : p.fee === 'no' ? 'Free' : '', p.wheelchair ? 'Wheelchair accessible' : ''].filter(Boolean).join(' · ') };
         case 'water': return { name: p.name || 'Drinking water', address: 'Drinking water tap or fountain', noRecent: true };
@@ -695,16 +778,20 @@
       panel.setAttribute('role', 'dialog');
       panel.setAttribute('aria-label', 'Map layers and alerts');
       panel.append(el('h2', null, 'Map layers'));
+      const layerGroup = el('div', 'group');
       for (const L of LAYER_LIST) {
-        const f = feeds[FEED_FOR[L.id]];
+        const f = FEED_FOR[L.id] ? feeds[FEED_FOR[L.id]] : null;
         const on = !!shownLayers[L.id];
-        const bad = on && !!f.error;
-        const hint = bad ? f.error : (on && f.loading ? 'Loading…' : L.hint);
-        panel.append(toggleRow(L.label, hint, on, L.colour, () => setLayer(L.id, !on), bad));
+        const bad = on && !!(f && f.error);
+        const hint = bad ? f.error : (on && f && f.loading ? 'Loading…' : L.hint);
+        layerGroup.append(toggleRow(L.label, hint, on, L.colour, () => setLayer(L.id, !on), bad));
       }
-      panel.append(el('h3', null, 'Alerts'));
-      panel.append(toggleRow('Rain alerts', 'When rain is forecast near you in the next 2 hours', alertSettings.rain, null, () => setAlert('rain')));
-      panel.append(toggleRow('Heat alerts', 'A reminder to drink water when heat stress is high', alertSettings.heat, null, () => setAlert('heat')));
+      panel.append(layerGroup, el('h3', null, 'Alerts'));
+      const alertGroup = el('div', 'group group-alerts');
+      alertGroup.append(
+        toggleRow('Rain alerts', 'When rain is forecast near you in the next 2 hours', alertSettings.rain, null, () => setAlert('rain')),
+        toggleRow('Heat alerts', 'A reminder to drink water when heat stress is high', alertSettings.heat, null, () => setAlert('heat')));
+      panel.append(alertGroup);
       const done = el('button', 'sheet-done', 'Done');
       done.type = 'button';
       done.addEventListener('click', closeSheet);
@@ -721,7 +808,7 @@
     function setLayer(id, on) {
       shownLayers[id] = on;
       saveJson('layers', shownLayers);
-      if (on) loadFeed(FEED_FOR[id]);
+      if (on && FEED_FOR[id]) loadFeed(FEED_FOR[id]);
       applyOverlayVisibility();
       if (!sheet.hidden) renderSheet();
     }
@@ -1019,6 +1106,12 @@
       list.appendChild(el('li', 'msg', text));
     }
 
+    // Only rewrite text that is entirely in capitals; leave names like "McDonald's" as they are
+    function niceName(text) {
+      if (!text || text !== String(text).toUpperCase() || !/[A-Z]/.test(text)) return text;
+      return niceStreet(text).replace(/\bSingapore (\d{6})\b/, 'Singapore $1');
+    }
+
     function showResults(results) {
       list.innerHTML = '';
       list.dataset.quick = '';
@@ -1043,7 +1136,9 @@
         const data = await getJson('/api/search?q=' + encodeURIComponent(q)
           + '&lat=' + c.lat.toFixed(2) + '&lng=' + c.lng.toFixed(2));
         if (q !== lastQuery) return;
-        showResults(data.results || []);
+        // OneMap names come in capitals; show them in normal case, like the rest of the app
+        showResults((data.results || []).map((r) => r.category ? r
+          : { ...r, name: niceName(r.name), address: niceName(r.address) }));
       } catch (e) {
         if (q === lastQuery) showMessage('Search problem: ' + e.message);
       }
@@ -1094,7 +1189,7 @@
       picked = r;
       if (!r.noRecent) remember(r);
       if (pickedMarker) pickedMarker.remove();
-      pickedMarker = new maplibregl.Marker({ color: '#0b5fff' }).setLngLat([r.lng, r.lat]).addTo(map);
+      pickedMarker = new maplibregl.Marker({ color: '#007aff' }).setLngLat([r.lng, r.lat]).addTo(map);
       map.flyTo({ center: [r.lng, r.lat], zoom: Math.max(map.getZoom(), 16) });
 
       const startBtn = el('button', 'btn-start', 'Start here');
@@ -1409,12 +1504,17 @@
       LK: 'Link', MT: 'Mount', KG: 'Kampong', TG: 'Tanjong', BLK: 'Block'
     };
 
+    // Short forms that stay in capitals
+    const ACRONYMS = ['MRT', 'LRT', 'HDB', 'NTUC', 'SAFRA', 'NUS', 'NTU', 'SMU', 'SIT', 'SUTD', 'SUSS', 'ITE', 'CC',
+                      'RC', 'JTC', 'PUB', 'NEA', 'LTA', 'URA', 'SGH', 'KKH', 'TTSH', 'NUH', 'CGH', 'SKH', 'KTPH', 'IMH',
+                      'YMCA', 'YWCA', 'ICA', 'MOE', 'CPF', 'IRAS', 'NLB', 'UOB', 'OCBC', 'DBS', 'POSB', 'ATM', 'PCN', 'SG'];
+
     // "BEDOK NTH AVE 1" -> "Bedok North Avenue 1"
     function niceStreet(s) {
       if (!s) return '';
       return String(s).trim().split(/\s+/).map((w) => {
         const up = w.toUpperCase().replace(/\.$/, '');
-        if (EXPRESSWAYS.includes(up)) return up;
+        if (EXPRESSWAYS.includes(up) || ACRONYMS.includes(up.replace(/[^A-Z]/g, ''))) return w.toUpperCase();
         if (ABBREVIATIONS[up]) return ABBREVIATIONS[up];
         if (/\d/.test(w)) return up;
         return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
