@@ -23,7 +23,7 @@ async function fetchAll(endpoint, key, maxPages) {
       clearTimeout(timer);
     }
     if (resp.status === 401 || resp.status === 403) {
-      throw Object.assign(new Error('LTA rejected the key. Check LTA_ACCOUNT_KEY in Vercel.'), { status: 502 });
+      throw Object.assign(new Error('LTA rejected the key (status ' + resp.status + '). Check LTA_ACCOUNT_KEY in Vercel.'), { status: 502 });
     }
     if (!resp.ok) throw Object.assign(new Error('LTA data failed (status ' + resp.status + ')'), { status: 502 });
     const json = await resp.json();
@@ -43,6 +43,16 @@ function readIncidents(rows) {
   })).filter((r) => inSingapore(r.lat, r.lng));
 }
 
+// URA's names arrive cut at 22 characters with a stray space ("BEDOK RD FOOD CENTRE O FF ST")
+// and end in "OFF ST" (off-street). Rejoin the word, drop "OFF ST", and say it is a car park.
+function tidyUraName(name) {
+  let n = String(name || '');
+  if (n.length > 23 && n[22] === ' ') n = n.slice(0, 22) + n.slice(23);
+  n = n.replace(/\s*\bOFF\s+ST\b/ig, '').replace(/\s+/g, ' ').trim();
+  if (!/CAR\s*PARK/i.test(n)) n += ' CAR PARK';
+  return n;
+}
+
 function readCarparks(rows) {
   const out = [];
   for (const r of rows) {
@@ -51,7 +61,7 @@ function readCarparks(rows) {
     if (!inSingapore(lat, lng)) continue;
     out.push({
       id: String(r.CarParkID || ''),
-      name: String(r.Development || r.Area || 'Car park').slice(0, 120),
+      name: (r.Agency === 'URA' ? tidyUraName(r.Development || r.Area) : String(r.Development || r.Area || 'Car park')).slice(0, 120),
       vehicle: r.LotType === 'Y' ? 'motorcycle' : 'car',
       lots: Number(r.AvailableLots) || 0,
       agency: String(r.Agency || ''),
@@ -64,7 +74,8 @@ function readCarparks(rows) {
 
 module.exports = async (req, res) => {
   const kind = (req.query && req.query.kind) || '';
-  const key = process.env.LTA_ACCOUNT_KEY;
+  // Ignore stray spaces, line breaks or quotes picked up when the key was pasted
+  const key = String(process.env.LTA_ACCOUNT_KEY || '').trim().replace(/^["']|["']$/g, '');
   if (!key) {
     return res.status(503).json({ error: 'Add your LTA DataMall key in Vercel as LTA_ACCOUNT_KEY.', needsKey: true });
   }
