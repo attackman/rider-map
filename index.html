@@ -197,6 +197,32 @@
       border: 0; background: transparent; color: inherit; opacity: .7;
       width: 44px; height: 44px; font-size: 22px; font-weight: 300; cursor: pointer; flex: none;
     }
+    /* All alerts folded into one slim line; tap it to read them in full */
+    .alert-bar { padding-top: 0; padding-bottom: 0; min-height: 44px; font-weight: 600; }
+    .alert-bar .alert-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 10px 0; }
+    .alert-more { opacity: .7; font-weight: 400; margin-left: 4px; }
+
+    /* Saved and recent places as one-tap chips under the search bar */
+    .chips {
+      display: flex; gap: 8px; margin: 8px -12px 0; padding: 0 12px 6px; overflow-x: auto;
+      scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    }
+    .chips::-webkit-scrollbar { display: none; }
+    .chips[hidden] { display: none; }
+    .chip {
+      flex: none; max-width: 210px; min-height: 44px; padding: 0 16px; border-radius: 999px;
+      border: 0.5px solid var(--edge); background: var(--panel-solid); color: var(--text);
+      font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14); cursor: pointer;
+    }
+    .chip .mark { color: var(--orange); margin-right: 6px; }
+
+    /* What to hide at the top while searching or riding, so the map and results get the room */
+    body.searching .install, body.searching .alerts, body.searching .chips { display: none !important; }
+    body.riding .search, body.riding .install, body.riding .alerts, body.riding .chips { display: none !important; }
+    body.riding.ride-search .search { display: block !important; }
+    body.riding.ride-search .turn { display: none !important; }
+    .icon-btn[hidden] { display: none; }
 
     /* ---------- layers and alerts sheet: an iOS bottom sheet with grouped lists ---------- */
     .sheet { position: fixed; inset: 0; z-index: 8; background: rgba(0, 0, 0, 0.32); }
@@ -244,16 +270,14 @@
       background: var(--accent); color: #ffffff; font-size: 17px; font-weight: 600; cursor: pointer;
     }
 
-    /* ---------- floating "start from my location" ---------- */
-    .locate {
-      position: fixed; left: 12px;
-      bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
-      z-index: 4; border: 0.5px solid var(--edge); border-radius: 999px;
-      background: var(--panel); color: var(--accent);
+    /* ---------- floating pill above the card (Re-centre while riding) ---------- */
+    .card .float-btn {
+      position: absolute; left: 4px; top: -66px;
+      border: 0.5px solid var(--edge); border-radius: 999px;
+      background: var(--panel-solid); color: var(--accent);
       min-height: 54px; padding: 0 20px; font-size: 17px; font-weight: 600;
       box-shadow: var(--shadow); cursor: pointer;
     }
-    .locate[hidden] { display: none; }
 
     /* ---------- bottom card ---------- */
     .card {
@@ -279,6 +303,42 @@
     .btn-go       { background: var(--green);    color: #ffffff; }
     .btn-end-ride { background: var(--red);      color: #ffffff; }
     .card .row .btn-star  { flex: 0 0 56px; background: var(--chip); color: var(--orange); font-size: 24px; }
+    .card .place-head { padding-right: 44px; }
+    .card-close {
+      position: absolute; top: 12px; right: 12px; width: 36px; height: 36px; border: 0; border-radius: 50%;
+      background: var(--chip); color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer;
+    }
+    .card-close::after { content: ''; position: absolute; inset: -6px; }  /* bigger tap area */
+    .card .links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 4px; }
+
+    /* ---------- riding: next turn at the top, one slim bar at the bottom ---------- */
+    .turn {
+      position: fixed; left: 8px; right: 8px; z-index: 5;
+      top: calc(env(safe-area-inset-top, 0px) + 8px);
+    }
+    .turn[hidden] { display: none; }
+    .turn .next { margin-bottom: 0; box-shadow: var(--shadow); padding-right: 8px; min-height: 64px; }
+    .turn .next-words { flex: 1; min-width: 0; }
+    .next-search {
+      flex: none; width: 48px; height: 48px; border: 0; border-radius: 12px;
+      background: rgba(255, 255, 255, 0.14); color: #ffffff; cursor: pointer;
+    }
+    .next-search svg { width: 22px; height: 22px; display: block; margin: auto; }
+    .card.ride { padding: 12px; border-radius: 22px; }
+    .ride-bar { display: flex; align-items: center; gap: 8px; }
+    .ride-info { flex: 1; min-width: 0; padding-left: 4px; }
+    .ride-left { font-size: 24px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.15; white-space: nowrap; }
+    .ride-info .sub { margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ride-btn {
+      flex: none; width: 52px; height: 54px; border: 0; border-radius: 14px;
+      background: var(--chip); color: var(--chip-text); font-size: 22px; cursor: pointer;
+    }
+    .ride-end {
+      flex: none; height: 54px; padding: 0 18px; border: 0; border-radius: 14px;
+      background: var(--red); color: #ffffff; font-size: 17px; font-weight: 600; cursor: pointer;
+    }
+    .card.ride > .sub, .card.ride > .error { margin: 0 4px 10px; }
+    .card.ride > .sub.off { color: var(--orange); font-weight: 600; }
     .card .row .btn-voice { flex: 0 0 56px; background: var(--chip); color: var(--chip-text); font-size: 22px; }
 
     /* Cycle / Drive / Walk: an iOS segmented control */
@@ -327,8 +387,13 @@
     .me-arrow {
       position: absolute; left: 50%; top: -9px; margin-left: -7px;
       width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent;
-      border-bottom: 11px solid #007aff;
+      border-bottom: 11px solid #007aff; display: none;
     }
+    /* Before a ride: a soft cone shows which way the phone is facing. While riding: an arrow. */
+    .me-cone { position: absolute; left: -15px; top: -15px; width: 60px; height: 60px; pointer-events: none; }
+    .me-cone svg { width: 60px; height: 60px; display: block; }
+    .me.riding .me-arrow { display: block; }
+    .me.riding .me-cone { display: none; }
 
     /* Short message at the top, e.g. "Saved": an iOS-style HUD */
     .toast {
@@ -407,17 +472,17 @@
     <div class="search-box">
       <input id="q" type="search" placeholder="Search places"
              autocomplete="off" enterkeyhint="search" aria-label="Search places" />
-      <button id="layers" class="icon-btn" type="button" aria-label="Map layers and alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 13 10 5 10-5"/><path d="m2 17.5 10 5 10-5" opacity=".5"/></svg></button>
-      <button id="theme" class="icon-btn" type="button" aria-label="Change light or dark mode"></button>
-      <button id="clear" class="icon-btn" type="button" aria-label="Clear search">×</button>
+      <button id="clear" class="icon-btn" type="button" aria-label="Clear search" hidden>×</button>
+      <button id="me" class="icon-btn" type="button" aria-label="Show my location"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.2 3.1 3.6 10.2c-.9.4-.8 1.7.2 1.9l6.5 1.6 1.6 6.5c.2 1 1.5 1.1 1.9.2L20.9 3.8c.2-.5-.2-.9-.7-.7z"/></svg></button>
+      <button id="layers" class="icon-btn" type="button" aria-label="Map layers, alerts and settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 13 10 5 10-5"/><path d="m2 17.5 10 5 10-5" opacity=".5"/></svg></button>
     </div>
     <div id="install" class="install" hidden></div>
     <div id="alerts" class="alerts"></div>
+    <div id="chips" class="chips" hidden></div>
     <ul id="results" class="results"></ul>
   </div>
 
-  <button id="locate" class="locate" type="button">◎ Start from my location</button>
-
+  <div id="turn" class="turn" hidden></div>
   <div id="card" class="card" hidden></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="sheet" class="sheet" hidden></div>
@@ -454,13 +519,8 @@
       try { localStorage.setItem(key, value); } catch (e) { /* storage blocked: ignore */ }
     }
 
-    // Theme button icons: half circle = Auto, moon = Dark, sun = Light
-    const SVG = (body) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + body + '</svg>';
-    const THEME_ICONS = {
-      auto: SVG('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/>'),
-      dark: SVG('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
-      light: SVG('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>')
-    };
+    // Light / dark choice (now in the Layers menu under Display)
+    const THEME_NAMES = { auto: 'Auto', light: 'Light', dark: 'Dark' };
 
     let mode = load('mode', Object.keys(MODES), 'cycle');
     let themeSetting = load('theme', ['auto', 'light', 'dark'], 'auto');
@@ -480,8 +540,6 @@
     function applyThemeToPage() {
       document.documentElement.dataset.theme = theme;
       document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#000000' : '#f2f2f7';
-      themeBtn.innerHTML = THEME_ICONS[themeSetting]; // fixed icons defined below, no user text
-      themeBtn.dataset.setting = themeSetting;
     }
 
     function lineColour() { return MODES[mode][theme]; }
@@ -838,6 +896,13 @@
       const d = new Date(iso);
       return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     }
+    // "4 pm" / "4:30 pm", for the slim alert line
+    function shortClock(iso) {
+      const d = new Date(iso);
+      if (!iso || isNaN(d)) return '';
+      const h = d.getHours(), m = d.getMinutes();
+      return (h % 12 || 12) + (m ? ':' + String(m).padStart(2, '0') : '') + (h < 12 ? ' am' : ' pm');
+    }
 
     // Tap a shop, car park, toilet, incident or rain area for details and "Start here / Go here"
     map.on('click', (e) => {
@@ -904,6 +969,19 @@
         toggleRow('Auto zoom', 'Zooms out when you go fast, in near turns and the end', rideSettings.autoZoom, null, () => setRideSetting('autoZoom')),
         toggleRow('Battery saver', 'Dark map, fewer updates between turns, no animations', rideSettings.batterySaver, null, () => setRideSetting('batterySaver')));
       panel.append(rideGroup);
+
+      // Light / dark, moved here from the search bar
+      panel.append(el('h3', null, 'Display'));
+      const seg = el('div', 'modes theme-seg');
+      for (const key of ['auto', 'light', 'dark']) {
+        const b = el('button', key === themeSetting ? 'on' : '', THEME_NAMES[key]);
+        b.type = 'button';
+        b.addEventListener('click', () => { setTheme(key); refreshLayersSheet(); });
+        seg.append(b);
+      }
+      panel.append(seg, el('p', 'sheet-note', rideSettings.batterySaver
+        ? 'Battery saver is on, so the map stays dark.'
+        : 'Auto follows your phone’s light or dark setting.'));
 
       panel.append(el('h3', null, 'More'));
       const more = el('div', 'group');
@@ -980,6 +1058,7 @@
     // The rider's position if known, otherwise the middle of the map
     function whereAmI() {
       if (lastFix) return { lat: lastFix.lat, lng: lastFix.lng };
+      if (lastKnown) return { lat: lastKnown.lat, lng: lastKnown.lng };
       if (start && start.name === 'My location') return { lat: start.lat, lng: start.lng };
       const c = map.getCenter();
       return { lat: c.lat, lng: c.lng };
@@ -1004,9 +1083,13 @@
           const n = nearestTo(w.forecast.areas, here);
           if (n && n.item.rain && n.dist < 8000) {
             const until = clockText(w.forecast.validUntil);
+            const f = String(n.item.forecast);
+            const word = /heavy/i.test(f) ? 'Heavy rain' : /thunder/i.test(f) ? 'Storms' : /shower/i.test(f) ? 'Showers' : 'Rain';
+            const till = shortClock(w.forecast.validUntil);
             found.push({
               kind: 'rain', area: n.item,
               key: 'rain|' + n.item.name + '|' + n.item.forecast + '|' + w.forecast.validUntil,
+              short: word + (till ? ' till ' + till : ' soon'),
               text: n.item.forecast + ' expected around ' + n.item.name + (until ? ' until ' + until : ' in the next 2 hours'),
               speech: n.item.forecast + ' expected around ' + n.item.name + ' in the next 2 hours.'
             });
@@ -1018,6 +1101,7 @@
             found.push({
               kind: 'heat',
               key: 'heat|' + n.item.name + '|' + n.item.level + '|' + new Date().toDateString(),
+              short: 'High heat',
               text: 'High heat stress around ' + n.item.name + (n.item.wbgt ? ' (' + n.item.wbgt + '°C WBGT)' : '')
                 + '. Drink water and rest in the shade.',
               speech: 'High heat stress. Remember to drink water.'
@@ -1028,32 +1112,64 @@
       renderAlerts(found.filter((a) => !dismissedAlerts.has(a.key)));
     }
 
+    // Folded: one slim line ("🌧 Showers till 3 pm · 🥵 High heat"). Open: each alert in full.
+    let alertsOpen = false;
+    let shownAlerts = [];
+    const ALERT_ICON = { rain: '🌧 ', heat: '🥵 ' };
+
+    function dismissAlert(a) {
+      dismissedAlerts.add(a.key);
+      saveJson('dismissedAlerts', [...dismissedAlerts].slice(-30));
+    }
+
     function renderAlerts(items) {
+      shownAlerts = items;
       alertsBox.innerHTML = '';
+      if (!items.length) alertsOpen = false;
+      for (const a of items) {
+        if (riding && !spokenAlerts.has(a.key)) { spokenAlerts.add(a.key); speak(a.speech); }
+      }
+      if (items.length && !alertsOpen) {
+        const bar = el('div', 'alert alert-bar alert-' + items[0].kind);
+        bar.setAttribute('role', 'status');
+        const text = el('div', 'alert-text', items.map((a) => ALERT_ICON[a.kind] + a.short).join(' · '));
+        text.setAttribute('role', 'button');
+        text.setAttribute('aria-label', 'Show alert details');
+        text.addEventListener('click', () => { alertsOpen = true; renderAlerts(shownAlerts); });
+        const x = el('button', 'alert-close', '×');
+        x.type = 'button';
+        x.setAttribute('aria-label', 'Dismiss alerts');
+        x.addEventListener('click', () => { items.forEach(dismissAlert); renderAlerts([]); });
+        bar.append(text, x);
+        alertsBox.append(bar);
+        return;
+      }
       for (const a of items) {
         const box = el('div', 'alert alert-' + a.kind);
         box.setAttribute('role', 'status');
-        const text = el('div', 'alert-text', (a.kind === 'rain' ? '🌧 ' : '🥵 ') + a.text);
-        if (a.kind === 'rain') {
-          // Tap the alert to see the rain on the map
-          text.addEventListener('click', () => {
+        const text = el('div', 'alert-text', ALERT_ICON[a.kind] + a.text);
+        // Tap the rain alert to see the rain on the map; tap the heat alert to fold them again
+        text.addEventListener('click', () => {
+          alertsOpen = false;
+          renderAlerts(shownAlerts);
+          if (a.kind === 'rain') {
             if (!shownLayers.rain) setLayer('rain', true);
             map.flyTo({ center: [a.area.lng, a.area.lat], zoom: 12 });
-          });
-        }
+          }
+        });
         const x = el('button', 'alert-close', '×');
         x.type = 'button';
         x.setAttribute('aria-label', 'Dismiss alert');
         x.addEventListener('click', () => {
-          dismissedAlerts.add(a.key);
-          saveJson('dismissedAlerts', [...dismissedAlerts].slice(-30));
-          box.remove();
+          dismissAlert(a);
+          renderAlerts(shownAlerts.filter((s) => s !== a));
         });
         box.append(text, x);
         alertsBox.append(box);
-        if (riding && !spokenAlerts.has(a.key)) { spokenAlerts.add(a.key); speak(a.speech); }
       }
     }
+    // Touching the map folds the alerts back into one line
+    map.on('movestart', () => { if (alertsOpen) { alertsOpen = false; renderAlerts(shownAlerts); } });
 
     // Keep layers and alerts fresh while the app is open
     let ticks = 0;
@@ -1109,9 +1225,10 @@
     const input = document.getElementById('q');
     const list = document.getElementById('results');
     const clearBtn = document.getElementById('clear');
-    const themeBtn = document.getElementById('theme');
+    const meBtn = document.getElementById('me');
     const card = document.getElementById('card');
-    const locateBtn = document.getElementById('locate');
+    const turnBox = document.getElementById('turn');
+    const chipsBox = document.getElementById('chips');
     const toast = document.getElementById('toast');
 
     let picked = null;       // place chosen from search, waiting for Start/Go
@@ -1130,7 +1247,11 @@
     let watchId = null;
     let following = true;    // map keeps the rider in view
     let meMarker = null;
-    let lastFix = null;      // { lat, lng, accuracy, heading, time }
+    let lastFix = null;      // { lat, lng, accuracy, heading, time } while riding
+    let lastKnown = null;    // latest position before or during a ride (for the blue dot)
+    let idleWatchId = null;  // watching location for the blue dot when not riding
+    let locationAllowed = false;
+    let compassHeading = null;
     let progress = null;     // { remaining_m, offRoute_m }
     let offRouteCount = 0;
     let lastRerouteAt = 0;
@@ -1149,14 +1270,6 @@
       applyThemeToPage();
       if (changed) map.setStyle(MAP_STYLES[theme]);
     }
-
-    themeBtn.addEventListener('click', () => {
-      const order = ['auto', 'dark', 'light'];
-      const next = order[(order.indexOf(themeSetting) + 1) % order.length];
-      setTheme(next);
-      const names = { auto: 'Auto: follows your phone', dark: 'Dark mode', light: 'Light mode' };
-      showToast(names[next]);
-    });
 
     // In Auto, follow the phone when it switches between light and dark
     darkQuery.addEventListener('change', () => { if (themeSetting === 'auto') setTheme('auto'); });
@@ -1243,19 +1356,50 @@
       ctrl.style.bottom = card.hidden ? '' : (card.offsetHeight + 12) + 'px';
     }
 
-    function showCard(children) {
+    function showCard(children, extraClass) {
       card.innerHTML = '';
+      card.className = 'card' + (extraClass ? ' ' + extraClass : '');
       children.forEach((c) => card.appendChild(c));
       card.hidden = false;
-      locateBtn.hidden = true;
       liftControls();
+      updateTop();
     }
 
     function hideCard() {
       card.hidden = true;
       card.innerHTML = '';
-      locateBtn.hidden = false;
+      card.className = 'card';
       liftControls();
+      updateTop();
+    }
+
+    // ---------- top of the screen: hide banners while searching; shortcut chips when idle ----------
+    function updateTop() {
+      const searching = document.activeElement === input || !!input.value.trim() || list.childElementCount > 0;
+      document.body.classList.toggle('searching', searching);
+      clearBtn.hidden = !input.value;
+      renderChips();
+    }
+
+    let chipsKey = '';
+    function renderChips() {
+      const items = [...savedPlaces.map((p) => [p, '★']),
+                     ...recentPlaces.filter((r) => !isSaved(r)).map((p) => [p, '🕘'])].slice(0, 6);
+      const show = !riding && card.hidden && items.length > 0;
+      chipsBox.hidden = !show;
+      if (!show) return;
+      const key = items.map(([p, m]) => m + p.name + p.lat + p.lng).join('|');
+      if (key === chipsKey) return;
+      chipsKey = key;
+      chipsBox.innerHTML = '';
+      for (const [p, mark] of items) {
+        const chip = el('button', 'chip');
+        chip.type = 'button';
+        chip.append(el('span', 'mark', mark), document.createTextNode(p.name));
+        chip.setAttribute('aria-label', 'Go to ' + p.name);
+        chip.addEventListener('click', () => { track('chip'); remember(p); goTo(p); });
+        chipsBox.append(chip);
+      }
     }
 
     // ---------- search ----------
@@ -1333,7 +1477,20 @@
       lastQuery = '';
       input.focus();
       showQuickList();
+      updateTop();
     });
+
+    // Keep the top of the screen in step with the search box and its list
+    input.addEventListener('input', updateTop);
+    input.addEventListener('focus', updateTop);
+    input.addEventListener('blur', () => setTimeout(() => {
+      updateTop();
+      // Mid-ride search closed without choosing anything: back to the turn banner
+      if (riding && !input.value.trim() && document.activeElement !== input && !list.childElementCount) {
+        document.body.classList.remove('ride-search');
+      }
+    }, 350));
+    new MutationObserver(updateTop).observe(list, { childList: true });
 
     // ---------- choosing a place ----------
     function choose(r) {
@@ -1341,6 +1498,7 @@
       list.dataset.quick = '';
       input.value = '';
       input.blur(); // hide the phone keyboard
+      document.body.classList.remove('ride-search');
 
       // Information only (e.g. a rain area): show it, with no route buttons
       if (r.info) {
@@ -1358,12 +1516,12 @@
       pickedMarker = new maplibregl.Marker({ color: '#007aff' }).setLngLat([r.lng, r.lat]).addTo(map);
       map.flyTo({ center: [r.lng, r.lat], zoom: Math.max(map.getZoom(), 16) });
 
-      const startBtn = el('button', 'btn-start', 'Start here');
+      // One big "Go here": routes straight from where you are. "Start from here" is a small link.
       const endBtn = el('button', 'btn-end', 'Go here');
-      startBtn.addEventListener('click', () => setPoint('start', picked));
-      endBtn.addEventListener('click', () => setPoint('end', picked));
+      endBtn.type = 'button';
+      endBtn.addEventListener('click', () => goTo(picked));
       const row = el('div', 'row');
-      row.append(startBtn, endBtn);
+      row.append(endBtn);
       if (!r.noRecent) {
         const star = el('button', 'btn-star', isSaved(r) ? '★' : '☆');
         star.type = 'button';
@@ -1376,22 +1534,52 @@
         });
         row.append(star);
       }
-      const parts = [el('div', 'place', r.name), el('div', 'sub', r.address)];
+      const close = el('button', 'card-close', '×');
+      close.type = 'button';
+      close.setAttribute('aria-label', 'Close');
+      close.addEventListener('click', closePlaceCard);
+      const parts = [close, el('div', 'place place-head', r.name), el('div', 'sub place-head', r.address)];
       const closedCount = closedReports(r);
       if (closedCount) parts.push(el('div', 'warn', '⚠ Reported closed for good by ' + closedCount + (closedCount === 1 ? ' rider' : ' riders')));
       parts.push(row);
+      const links = el('div', 'links');
+      if (!riding) {
+        const startLink = el('button', 'link-btn start-link', 'Start from here instead');
+        startLink.type = 'button';
+        startLink.addEventListener('click', () => setPoint('start', picked));
+        links.append(startLink);
+      }
       if (!r.noRecent && r.name !== 'My location') {
-        const links = el('div', 'links');
-        const report = el('button', 'link-btn', 'Closed for good? Let other riders know');
+        const report = el('button', 'link-btn', 'Closed for good?');
         report.type = 'button';
         report.addEventListener('click', () => {
           report.textContent = 'Tap again to confirm it has closed for good';
           report.onclick = () => reportClosed(r, report);
         }, { once: true });
         links.append(report);
-        parts.push(links);
       }
+      if (links.childElementCount) parts.push(links);
       showCard(parts);
+    }
+
+    function closePlaceCard() {
+      picked = null;
+      if (pickedMarker) { pickedMarker.remove(); pickedMarker = null; }
+      if (riding) showRideCard();
+      else if (start || end) showTrip();
+      else hideCard();
+    }
+
+    // "Go here": route from where you are now (or from the start you picked)
+    function goTo(place) {
+      if (!place) return;
+      const fromMe = !riding && (!start || start.name === 'My location');
+      if (fromMe && start) {          // refresh "My location" rather than reuse an old position
+        start = null;
+        if (startMarker) { startMarker.remove(); startMarker = null; }
+      }
+      setPoint('end', place);
+      if (fromMe) useMyLocation();
     }
 
     // ---------- saved and recent places (kept on this phone only) ----------
@@ -1487,6 +1675,11 @@
         showTrip([el('div', 'error', 'This browser cannot share your location.')]);
         return;
       }
+      // The blue dot already knows where you are: use it straight away
+      if (lastKnown && Date.now() - lastKnown.time < 20000 && lastKnown.accuracy <= 100) {
+        setPoint('start', { name: 'My location', address: '', lat: lastKnown.lat, lng: lastKnown.lng });
+        return;
+      }
       showTrip([el('div', 'sub', 'Finding your location…')]);
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -1496,6 +1689,7 @@
             showTrip([el('div', 'error', 'Your location seems to be outside Singapore.')]);
             return;
           }
+          gotLocation(pos);
           setPoint('start', { name: 'My location', address: '', lat, lng });
         },
         (err) => {
@@ -1508,7 +1702,112 @@
       );
     }
 
-    locateBtn.addEventListener('click', useMyLocation);
+    // ---------- the blue dot: always shows where you are once location is allowed ----------
+    function noteKnown(c) {
+      const moving = (c.speed || 0) > 0.8 && c.heading != null && !Number.isNaN(c.heading);
+      lastKnown = { lat: c.latitude, lng: c.longitude, accuracy: c.accuracy || 0,
+                    heading: moving ? c.heading : null, time: Date.now() };
+    }
+
+    function meEl() {
+      return meMarker && typeof meMarker.getElement === 'function' ? meMarker.getElement() : null;
+    }
+
+    function placeMe(lngLat) {
+      if (!meMarker) meMarker = makeMeMarker().setLngLat(lngLat).addTo(map);
+      else meMarker.setLngLat(lngLat);
+      const dotEl = meEl();
+      if (dotEl) dotEl.classList.toggle('riding', riding);
+      updateArrow();
+    }
+
+    // Any successful location: remember it, show the dot, keep it updated from now on
+    function gotLocation(pos) {
+      const c = pos.coords;
+      if (!inSingapore(c.latitude, c.longitude)) return;
+      locationAllowed = true;
+      noteKnown(c);
+      if (!riding) placeMe([c.longitude, c.latitude]);
+      startIdleWatch();
+    }
+
+    function startIdleWatch() {
+      if (idleWatchId != null || riding || !('geolocation' in navigator) || document.visibilityState !== 'visible') return;
+      idleWatchId = navigator.geolocation.watchPosition((pos) => {
+        const c = pos.coords;
+        if (!inSingapore(c.latitude, c.longitude)) return;
+        locationAllowed = true;
+        noteKnown(c);
+        if (!riding) placeMe([c.longitude, c.latitude]);
+      }, () => {}, { enableHighAccuracy: !rideSettings.batterySaver, maximumAge: 5000, timeout: 30000 });
+      startCompass();
+    }
+
+    function stopIdleWatch() {
+      if (idleWatchId != null) navigator.geolocation.clearWatch(idleWatchId);
+      idleWatchId = null;
+    }
+
+    // Save battery: stop watching while the app is in the background
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') { if (locationAllowed && !riding) startIdleWatch(); }
+      else if (!riding) stopIdleWatch();
+    });
+
+    // If location was allowed before, show the dot as soon as the app opens (no pop-up)
+    (async () => {
+      try {
+        if (!navigator.permissions || !navigator.permissions.query) return;
+        const status = await navigator.permissions.query({ name: 'geolocation' });
+        if (status.state === 'granted') { locationAllowed = true; startIdleWatch(); }
+        status.onchange = () => { if (status.state === 'granted') { locationAllowed = true; startIdleWatch(); } };
+      } catch (e) { /* the dot appears after the first location instead */ }
+    })();
+
+    // Which way the phone is facing, for the cone around the dot
+    let compassStarted = false, lastCompassPaint = 0;
+    function setCompass(h) {
+      if (h == null || Number.isNaN(h)) return;
+      compassHeading = (h + 360) % 360;
+      if (Date.now() - lastCompassPaint > 150) { lastCompassPaint = Date.now(); updateArrow(); }
+    }
+    function startCompass() {
+      if (compassStarted) return;
+      compassStarted = true;
+      if ('ondeviceorientationabsolute' in window) {
+        window.addEventListener('deviceorientationabsolute', (e) => { if (e.alpha != null) setCompass(360 - e.alpha); });
+      } else {
+        window.addEventListener('deviceorientation', (e) => { if (e.webkitCompassHeading != null) setCompass(e.webkitCompassHeading); });
+      }
+    }
+    // iPhones ask permission for the compass, and only from a tap
+    function askCompassPermission() {
+      try {
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+          DeviceOrientationEvent.requestPermission().then(startCompass).catch(() => {});
+        }
+      } catch (e) { /* no compass: the dot still shows */ }
+    }
+
+    // Top-bar button: fly to where you are
+    meBtn.addEventListener('click', () => {
+      askCompassPermission();
+      track('show_me');
+      if (lastKnown && Date.now() - lastKnown.time < 60000) {
+        map.flyTo({ center: [lastKnown.lng, lastKnown.lat], zoom: Math.max(map.getZoom(), 16) });
+        return;
+      }
+      if (!('geolocation' in navigator)) { showToast('This browser cannot share your location'); return; }
+      showToast('Finding you…');
+      navigator.geolocation.getCurrentPosition((pos) => {
+        const c = pos.coords;
+        if (!inSingapore(c.latitude, c.longitude)) { showToast('You seem to be outside Singapore'); return; }
+        gotLocation(pos);
+        map.flyTo({ center: [c.longitude, c.latitude], zoom: Math.max(map.getZoom(), 16) });
+      }, (err) => {
+        showToast(err.code === 1 ? 'Location is blocked. Allow it in your browser settings.' : 'Could not find your location');
+      }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
+    });
 
     // ---------- trip card ----------
     function tripLine(colour, label, place) {
@@ -1602,7 +1901,8 @@
 
         const bounds = data.coordinates.reduce(
           (b, c) => b.extend(c), new maplibregl.LngLatBounds(data.coordinates[0], data.coordinates[0]));
-        map.fitBounds(bounds, { padding: { top: 100, bottom: 300, left: 40, right: 60 }, maxZoom: 17 });
+        const topSpace = document.querySelector('.search').offsetHeight + 30;
+        map.fitBounds(bounds, { padding: { top: topSpace, bottom: 340, left: 40, right: 60 }, maxZoom: 17 });
 
         const summary = el('div', 'summary');
         summary.append(
@@ -1610,6 +1910,7 @@
           el('small', null, '  ·  ' + formatTime(data.time_s) + ' ' + m.words));
         showTrip([summary, etaButton(data.time_s || 0)]);
         track('route_' + mode);
+        noteRouteDone();
       } catch (e) {
         if (myRequest !== routeRequest) return;
         if (riding) {
@@ -1836,6 +2137,7 @@
     const ARROW_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V5M5 11l7-7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
     // Big "next turn" banner at the top of the ride card
+    const SEARCH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.6-4.6"/></svg>';
     function nextTurnBanner() {
       const n = nextTurn();
       const box = el('div', 'next');
@@ -1846,15 +2148,24 @@
       const words = el('div', 'next-words');
       words.append(el('div', 'next-what', n ? n.step.phrase : 'Continue to your destination'));
       if (n) words.append(el('div', 'next-dist', formatDistance(Math.max(10, Math.round(n.dist / 10) * 10))));
-      box.append(icon, words);
+      // Search for a new destination mid-ride
+      const find = el('button', 'next-search');
+      find.type = 'button';
+      find.setAttribute('aria-label', 'Search for a new destination');
+      find.innerHTML = SEARCH_SVG; // fixed icon, no user text
+      find.addEventListener('click', () => { document.body.classList.add('ride-search'); input.focus(); });
+      box.append(icon, words, find);
       return box;
     }
 
     // ---------- live ride tracking ----------
+    const CONE_SVG = '<svg viewBox="0 0 60 60" aria-hidden="true"><defs><radialGradient id="meCone" cx="30" cy="30" r="30" gradientUnits="userSpaceOnUse"><stop offset="0.2" stop-color="#007aff" stop-opacity=".5"/><stop offset="1" stop-color="#007aff" stop-opacity="0"/></radialGradient></defs><path d="M30 30 13 3.5a30 30 0 0 1 34 0z" fill="url(#meCone)"/></svg>';
     function makeMeMarker() {
       const wrap = el('div', 'me');
       const rot = el('div', 'me-rot');
-      rot.appendChild(el('div', 'me-arrow'));
+      const cone = el('div', 'me-cone');
+      cone.innerHTML = CONE_SVG; // fixed drawing, no user text
+      rot.append(cone, el('div', 'me-arrow'));
       wrap.append(rot, el('div', 'me-dot'));
       return new maplibregl.Marker({ element: wrap });
     }
@@ -1872,8 +2183,12 @@
       progress = null;
       lastHeavy = 0;
       lastAutoZoom = null;
+      stopIdleWatch();                          // the ride's own location updates take over
+      document.body.classList.add('riding');
+      if (meEl()) meEl().classList.add('riding');
       keepScreenOn();
       track('ride_start');
+      setTimeout(checkAlerts, 6000);            // alerts are spoken, not shown, while riding
       showRideCard([el('div', 'sub', 'Waiting for GPS…')]);
       // Speaking straight from the tap also unlocks the voice on iPhones
       const first = navSteps.find((s) => s.kind === 'depart');
@@ -1885,10 +2200,17 @@
     function stopRide() {
       if (watchId != null) navigator.geolocation.clearWatch(watchId);
       watchId = null;
+      const wasRiding = riding;
       riding = false;
       lastFix = null;
       progress = null;
-      if (meMarker) { meMarker.remove(); meMarker = null; }
+      document.body.classList.remove('riding', 'ride-search');
+      turnBox.hidden = true;
+      turnBox.innerHTML = '';
+      // Keep the blue dot (now with the facing cone) and go back to watching quietly
+      if (meEl()) { meEl().classList.remove('riding'); updateArrow(); }
+      if (wasRiding && locationAllowed) startIdleWatch();
+      updateTop();
       // Back to north-up after a ride with "Map turns with me"
       if (typeof map.getBearing === 'function' && map.getBearing() !== 0) map.easeTo({ bearing: 0, duration: 400 });
     }
@@ -1921,10 +2243,10 @@
         if (secs > 0.5) speedKmh = metresBetween([lastFix.lng, lastFix.lat], here) / secs * 3.6;
       }
       lastFix = { lat: c.latitude, lng: c.longitude, accuracy: c.accuracy || 0, heading, speedKmh, time: Date.now() };
+      lastKnown = { lat: lastFix.lat, lng: lastFix.lng, accuracy: lastFix.accuracy, heading, time: lastFix.time };
+      locationAllowed = true;
 
-      if (!meMarker) meMarker = makeMeMarker().setLngLat(here).addTo(map);
-      else meMarker.setLngLat(here);
-      updateArrow();
+      placeMe(here);
 
       // Battery saver: between turns, do the full update only every 4 seconds
       if (rideSettings.batterySaver && lastHeavy && Date.now() - lastHeavy < 4000) {
@@ -1963,9 +2285,18 @@
         center: here,
         zoom: rideSettings.autoZoom ? autoZoomLevel(speedKmh, n ? n.dist : Infinity, toEnd) : Math.max(map.getZoom(), 16),
         bearing: rideSettings.headingUp ? (heading != null ? heading : map.getBearing()) : 0,
-        offset: [0, -Math.round(card.offsetHeight / 2)],
+        offset: [0, followOffsetY()],
         duration: rideSettings.batterySaver ? 0 : 800
       };
+    }
+
+    // Keep the rider in the open part of the map, between the turn banner and the bottom bar.
+    // With "Map turns with me", sit a little lower so more of the road ahead shows.
+    function followOffsetY() {
+      const top = turnBox.hidden ? 0 : turnBox.offsetHeight + 8;
+      const bottom = card.hidden ? 0 : card.offsetHeight + 8;
+      const lower = rideSettings.headingUp ? Math.round(window.innerHeight * 0.12) : 0;
+      return Math.round((top - bottom) / 2) + lower;
     }
 
     // Auto zoom: further out when moving fast, close in near turns and the destination
@@ -1979,13 +2310,21 @@
     }
 
     // The arrow shows the direction of travel on screen, allowing for how far the map is turned
+    // Riding: direction of travel. Otherwise: the compass, or direction of travel if walking.
+    function currentHeading() {
+      if (riding) return lastFix ? lastFix.heading : null;
+      if (compassHeading != null) return compassHeading;
+      return lastKnown ? lastKnown.heading : null;
+    }
     function updateArrow() {
-      if (!meMarker || !lastFix) return;
-      const rot = meMarker.getElement().querySelector('.me-rot');
+      if (!meMarker) return;
+      const dotEl = meEl();
+      const rot = dotEl && dotEl.querySelector('.me-rot');
       if (!rot) return;
+      const h = currentHeading();
       const bearing = typeof map.getBearing === 'function' ? map.getBearing() : 0;
-      rot.style.transform = 'rotate(' + ((lastFix.heading || 0) - bearing) + 'deg)';
-      rot.style.opacity = lastFix.heading == null ? '0' : '1';
+      rot.style.transform = 'rotate(' + ((h || 0) - bearing) + 'deg)';
+      rot.style.opacity = h == null ? '0' : '1';
     }
     map.on('rotate', updateArrow);
 
@@ -2047,51 +2386,65 @@
       return t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     }
 
+    // While riding: the next turn sits at the top; the bottom is one slim bar
+    // (distance and time left, arrival time, Send ETA, voice, End). The map gets the rest.
     function showRideCard(extra = []) {
       if (!riding) return;
-      const m = MODES[mode];
-      const parts = [];
-      if (progress) parts.push(nextTurnBanner());
-      parts.push(modeSwitch());
-      parts.push(tripLine(END_COLOUR, 'To', end));
 
+      turnBox.hidden = !progress;
+      turnBox.innerHTML = '';
+      if (progress) turnBox.append(nextTurnBanner());
+      if (picked) return;   // a place card is open (choosing a new destination): leave it there
+
+      const parts = [...extra];
+      if (progress && progress.offRoute_m > 50) parts.push(el('div', 'sub off', 'You are off the route'));
+
+      const info = el('div', 'ride-info');
+      let secondsLeft = null;
       if (progress && lastRoute && routeGeo && routeGeo.total > 0) {
         // Share of the route still ahead, applied to OneMap's own distance and time
         const share = Math.min(1, progress.remaining_m / routeGeo.total);
         const metresLeft = (lastRoute.distance_m || routeGeo.total) * share;
-        const secondsLeft = (lastRoute.time_s || 0) * share;
-        const summary = el('div', 'summary');
-        summary.append(
-          document.createTextNode(formatDistance(Math.max(metresLeft, 1))),
-          el('small', null, '  ·  ' + formatTime(Math.max(secondsLeft, 60)) + ' left'));
-        parts.push(summary);
-        parts.push(el('div', 'sub', 'Arrive about ' + arrivalClock(secondsLeft) + ' ' + m.words));
-        parts.push(etaButton(secondsLeft));
-        if (progress.offRoute_m > 50) parts.push(el('div', 'sub', 'You are off the route'));
+        secondsLeft = (lastRoute.time_s || 0) * share;
+        info.append(
+          el('div', 'ride-left', formatDistance(Math.max(metresLeft, 1)) + ' · ' + formatTime(Math.max(secondsLeft, 60))),
+          el('div', 'sub', 'Arrive ' + arrivalClock(secondsLeft) + (end ? ' · ' + end.name : '')));
+      } else {
+        info.append(el('div', 'ride-left', end ? end.name : 'Riding'));
       }
-      parts.push(...extra, el('div', 'wake'));
 
-      const row = el('div', 'row');
-      if (!following) {
-        const rc = el('button', 'btn-me', '◎ Re-centre');
-        rc.addEventListener('click', recentre);
-        row.append(rc);
+      const bar = el('div', 'ride-bar');
+      bar.append(info);
+      if (secondsLeft != null) {
+        const share = el('button', 'ride-btn btn-share-eta', '💬');
+        share.type = 'button';
+        share.setAttribute('aria-label', 'Send ETA to customer');
+        share.addEventListener('click', () => shareEta(secondsLeft));
+        bar.append(share);
       }
-      const voice = el('button', 'btn-voice', voiceOn ? '🔊' : '🔇');
+      const voice = el('button', 'ride-btn btn-voice', voiceOn ? '🔊' : '🔇');
+      voice.type = 'button';
       voice.setAttribute('aria-label', voiceOn ? 'Turn voice directions off' : 'Turn voice directions on');
       voice.addEventListener('click', toggleVoice);
-      row.append(voice);
-      const stop = el('button', 'btn-end-ride', 'End ride');
+      const stop = el('button', 'ride-end btn-end-ride', 'End');
+      stop.type = 'button';
+      stop.setAttribute('aria-label', 'End ride');
       stop.addEventListener('click', endRide);
-      row.append(stop);
-      parts.push(row);
+      bar.append(voice, stop);
+      parts.push(bar);
 
-      showCard(parts);
-      updateWakeNote();
+      if (!following) {
+        const rc = el('button', 'float-btn btn-recentre', '◎ Re-centre');
+        rc.type = 'button';
+        rc.addEventListener('click', recentre);
+        parts.push(rc);
+      }
+
+      showCard(parts, 'ride');
     }
 
     // ---------- anonymous usage counts (no user, device or location) ----------
-    const APP_VERSION = '2026.10.27';
+    const APP_VERSION = '2026.10.28';
     const lastTracked = {};
     function track(name) {
       if (!/^[a-z_:]{2,40}$/.test(name)) return;
@@ -2349,9 +2702,11 @@
         allow.addEventListener('click', () => {
           finish();
           if (!('geolocation' in navigator)) return;
+          askCompassPermission();
           navigator.geolocation.getCurrentPosition((pos) => {
             const { latitude, longitude } = pos.coords;
             if (inSingapore(latitude, longitude)) map.flyTo({ center: [longitude, latitude], zoom: 15 });
+            gotLocation(pos);
             track('welcome_location');
           }, () => showToast('You can allow location later in your browser settings.'),
           { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
@@ -2400,11 +2755,29 @@
       return close;
     }
 
+    // Only ask once someone has found the app useful: a route found, or a second visit.
+    // (The welcome screen already offers "Add to home screen" on the very first visit.)
+    const visits = (() => {
+      let n = 0;
+      try {
+        n = Number(localStorage.getItem('visits') || 0);
+        if (!sessionStorage.getItem('counted')) { n++; localStorage.setItem('visits', String(n)); sessionStorage.setItem('counted', '1'); }
+      } catch (e) { /* storage blocked */ }
+      return n;
+    })();
+    function engaged() {
+      try { return visits >= 2 || Number(localStorage.getItem('routesFound') || 0) >= 1; } catch (e) { return true; }
+    }
+    function noteRouteDone() {
+      try { localStorage.setItem('routesFound', String(Number(localStorage.getItem('routesFound') || 0) + 1)); } catch (e) { /* ignore */ }
+      if (installBox.hidden && (installPrompt || isPhone)) showInstall();
+    }
+
     function showInstall() {
-      if (isInstalled() || installSnoozed()) return;
+      if (isInstalled() || installSnoozed() || !engaged()) return;
       installBox.innerHTML = '';
       const text = el('div', 'install-text');
-      text.append(el('strong', null, 'Get ' + APP_NAME), el('span', null, 'Add it to your home screen, free'));
+      text.append(el('strong', null, 'Get ' + APP_NAME + ' — free'));
       const btn = el('button', 'install-btn', 'Install');
       btn.type = 'button';
       btn.addEventListener('click', onInstallClick);
@@ -2461,6 +2834,8 @@
 
     // Phones that never offer a one-tap prompt (iPhone, some browsers): still offer the button
     setTimeout(() => { if (!installPrompt && isPhone && installBox.hidden) showInstall(); }, 3000);
+
+    updateTop();   // shortcut chips for saved and recent places
 
     // ---------- install as an app ----------
     if ('serviceWorker' in navigator) {
