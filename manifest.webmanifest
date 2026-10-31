@@ -1,7 +1,7 @@
 {
-  "name": "AskGoWhere",
-  "short_name": "AskGoWhere",
-  "description": "Search places and get cycling, driving and walking routes in Singapore.",
+  "name": "RiderKaki",
+  "short_name": "RiderKaki",
+  "description": "The free map for Singapore delivery riders: voice directions, rain alerts and live parking lots.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

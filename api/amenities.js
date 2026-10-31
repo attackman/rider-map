@@ -21,7 +21,7 @@ async function ask(server) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'AskGoWhere/1.0 (+https://rider-map-theta.vercel.app)'
+        'User-Agent': 'RiderKaki/1.0 (+https://rider-map-theta.vercel.app)'
       },
       body: 'data=' + encodeURIComponent(QUERY),
       signal: controller.signal
