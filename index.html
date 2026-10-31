@@ -216,6 +216,22 @@
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14); cursor: pointer;
     }
     .chip .mark { color: var(--orange); margin-right: 6px; }
+    .chip { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+    .chip.armed { background: var(--red); color: #ffffff; max-width: 280px; }
+
+    /* × to remove a saved or recent place; "Clear" on the Recent heading */
+    .results li.has-x { padding-right: 56px; }
+    .results .row-x {
+      position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+      width: 44px; height: 44px; border: 0; border-radius: 50%; background: transparent;
+      color: var(--muted); font-size: 22px; font-weight: 300; cursor: pointer;
+    }
+    .results .row-x:active { background: var(--chip); opacity: 1; }
+    .results li.section { display: flex; align-items: center; justify-content: space-between; }
+    .results .section-btn {
+      border: 0; background: transparent; color: var(--accent); font-size: 15px; text-transform: none;
+      padding: 0 0 0 12px; min-height: 32px; cursor: pointer;
+    }
 
     /* What to hide at the top while searching or riding, so the map and results get the room */
     body.searching .install, body.searching .alerts, body.searching .chips { display: none !important; }
@@ -410,6 +426,29 @@
       display: block; width: 100%; margin-top: 10px; min-height: 46px; border: 0; border-radius: 12px;
       background: var(--tint-green); color: var(--start-text); font-size: 16px; font-weight: 600; cursor: pointer;
     }
+    /* Park near the drop-off */
+    .park { margin-top: 10px; background: var(--chip); border-radius: 14px; padding: 10px 12px 4px; }
+    .park-title { font-size: 15px; font-weight: 600; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .park-body { font-size: 14px; color: var(--muted); padding: 2px 0 6px; }
+    .park-row {
+      display: flex; align-items: center; gap: 10px; width: 100%; min-height: 50px; padding: 4px 0;
+      border: 0; border-top: 0.5px solid var(--line); background: transparent; color: var(--text);
+      font: inherit; text-align: left; cursor: pointer;
+    }
+    .park-row:first-child { border-top: 0; }
+    .park-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .park-name strong { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .park-walk { font-size: 13px; color: var(--muted); }
+    .park > .park-walk { display: block; padding-bottom: 2px; }
+    .park-lots { flex: none; font-size: 14px; font-weight: 700; color: #ffffff; background: #248a3d; border-radius: 10px; padding: 5px 10px; }
+    .park-lots.low { background: var(--orange); }
+    .park-undo { padding-left: 0; }
+    /* Quick replies and the one-tap rating */
+    .menu-row.reply-row { white-space: normal; line-height: 1.35; padding: 12px 44px 12px 16px; min-height: 54px; }
+    .rate { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 15px; font-weight: 600; }
+    .rate > span { flex: 1; }
+    .rate button:not(.link-btn) { flex: none; min-width: 56px; min-height: 48px; border: 0; border-radius: 12px; background: var(--chip); font-size: 22px; cursor: pointer; }
+    .modes button { font-size: 14px; }
     .card .warn { margin-top: 8px; font-size: 15px; font-weight: 600; color: var(--orange); }
     .card .links { margin-top: 10px; text-align: center; }
     .link-btn {
@@ -503,8 +542,9 @@
 
     // Route colours, brighter versions for the dark map
     const MODES = {
-      cycle: { label: 'Cycle', words: 'by bicycle', light: '#007aff', dark: '#3d9bff' },
-      drive: { label: 'Drive', words: 'by car',     light: '#5856d6', dark: '#8f8cff' },
+      cycle: { label: 'Cycle',     words: 'by bicycle',  light: '#007aff', dark: '#3d9bff' },
+      moto:  { label: 'Motorbike', words: 'by motorbike', light: '#ff9500', dark: '#ffb340' },
+      drive: { label: 'Drive',     words: 'by car',      light: '#5856d6', dark: '#8f8cff' },
       walk:  { label: 'Walk',  words: 'on foot',    light: '#30b0c7', dark: '#40c8e0' }
     };
 
@@ -712,7 +752,7 @@
     }
 
     function refreshShownLayers() {
-      for (const L of LAYER_LIST) if (shownLayers[L.id] && FEED_FOR[L.id]) loadFeed(FEED_FOR[L.id]);
+      for (const L of LAYER_LIST) if (isShown(L.id) && FEED_FOR[L.id]) loadFeed(FEED_FOR[L.id]);
     }
 
     const pointFeature = (lng, lat, props) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: props });
@@ -815,10 +855,23 @@
           'circle-stroke-width': 1.5, 'circle-stroke-color': edge } });
     }
 
+    // A layer is on if the rider switched it on, or the app showed it for them (parking near the drop-off)
+    const autoShow = {};
+    const isShown = (group) => !!(shownLayers[group] || autoShow[group]);
+    function setAutoLayer(group, on = true) {
+      autoShow[group] = on;
+      if (on && FEED_FOR[group]) loadFeed(FEED_FOR[group]);
+      applyOverlayVisibility();
+    }
+    function clearAutoLayers() {
+      for (const k of Object.keys(autoShow)) delete autoShow[k];
+      applyOverlayVisibility();
+    }
+
     function parkingFilter() {
       const types = [];
-      if (shownLayers.moto) types.push('motorcycle_parking');
-      if (shownLayers.cars) types.push('parking');
+      if (isShown('moto')) types.push('motorcycle_parking');
+      if (isShown('cars')) types.push('parking');
       return ['all',
         ['match', ['geometry-type'], ['Point', 'MultiPoint'], true, false],
         ['in', SUB, ['literal', types.length ? types : ['none']]]];
@@ -833,11 +886,11 @@
 
     function applyOverlayVisibility() {
       for (const [group, ids] of Object.entries(GROUP_LAYERS)) {
-        for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', shownLayers[group] ? 'visible' : 'none');
+        for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', isShown(group) ? 'visible' : 'none');
       }
       for (const id of ['ov-osm-parking', 'ov-osm-parking-letter']) {
         if (!map.getLayer(id)) continue;
-        map.setLayoutProperty(id, 'visibility', shownLayers.moto || shownLayers.cars ? 'visible' : 'none');
+        map.setLayoutProperty(id, 'visibility', isShown('moto') || isShown('cars') ? 'visible' : 'none');
         map.setFilter(id, parkingFilter());
       }
       const anyAmenity = ['toilet', 'water', 'shelter'].some((k) => shownLayers[k]);
@@ -1258,6 +1311,7 @@
     let routeGeo = null;     // route in metres, for working out progress
     let lastHeavy = 0;       // battery saver: when the last full update ran
     let lastAutoZoom = null; // auto zoom: last zoom chosen
+    let rideStartedAt = 0;
 
     applyThemeToPage();
 
@@ -1396,8 +1450,38 @@
         const chip = el('button', 'chip');
         chip.type = 'button';
         chip.append(el('span', 'mark', mark), document.createTextNode(p.name));
-        chip.setAttribute('aria-label', 'Go to ' + p.name);
-        chip.addEventListener('click', () => { track('chip'); remember(p); goTo(p); });
+        chip.setAttribute('aria-label', 'Go to ' + p.name + '. Press and hold to remove.');
+        // Press and hold a chip to remove it; a normal tap goes there
+        let holdTimer = null, armed = false, justArmed = false, startX = 0;
+        const disarm = () => {
+          armed = false;
+          chip.classList.remove('armed');
+          chip.innerHTML = '';
+          chip.append(el('span', 'mark', mark), document.createTextNode(p.name));
+        };
+        const arm = () => {
+          if (armed) return;
+          armed = true; justArmed = true;
+          chip.classList.add('armed');
+          chip.textContent = '✕ Remove ' + p.name + '?';
+          try { chip.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' }); } catch (e) { /* ignore */ }
+          if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) { /* ignore */ } }
+          setTimeout(() => { if (armed && chip.isConnected) disarm(); }, 3500);
+        };
+        chip.addEventListener('pointerdown', (e) => {
+          startX = e.clientX;
+          justArmed = false;
+          clearTimeout(holdTimer);
+          holdTimer = setTimeout(arm, 550);
+        });
+        chip.addEventListener('pointermove', (e) => { if (Math.abs(e.clientX - startX) > 8) clearTimeout(holdTimer); });
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => chip.addEventListener(ev, () => clearTimeout(holdTimer)));
+        chip.addEventListener('contextmenu', (e) => { e.preventDefault(); arm(); });
+        chip.addEventListener('click', () => {
+          if (justArmed) { justArmed = false; return; }   // the click that ends the long press
+          if (armed) { removePlace(p); showToast('Removed'); return; }
+          track('chip'); remember(p); goTo(p);
+        });
         chipsBox.append(chip);
       }
     }
@@ -1629,11 +1713,76 @@
       addGroup('Saved', savedPlaces, '★');
       addGroup('Recent', recentPlaces.filter((r) => !isSaved(r)), '🕘');
       list.dataset.quick = list.childElementCount ? '1' : '';
+      addRemoveButtons();
+    }
+
+    // ---------- removing saved and recent places ----------
+    let keepQuick = false;   // a remove button was pressed: keep the list open when the keyboard closes
+    const holdList = () => { keepQuick = true; setTimeout(() => { keepQuick = false; }, 800); };
+
+    function removePlace(p) {
+      if (isSaved(p)) toggleSaved(p);
+      recentPlaces = recentPlaces.filter((r) => !samePlace(r, p));
+      saveJson('recent', recentPlaces);
+      track('remove_place');
+      updateTop();
+    }
+
+    function clearRecent() {
+      recentPlaces = recentPlaces.filter((r) => isSaved(r));   // saved places stay
+      saveJson('recent', recentPlaces);
+      track('clear_recent');
+      updateTop();
+    }
+
+    // Add an × to each saved/recent row, and "Clear" to the Recent heading
+    function addRemoveButtons() {
+      let section = '';
+      let i = 0;
+      const rows = [...list.children];
+      const saved = savedPlaces.slice();
+      const recent = recentPlaces.filter((r) => !isSaved(r));
+      for (const li of rows) {
+        if (li.classList.contains('section')) {
+          section = li.textContent;
+          i = 0;
+          if (section === 'Recent') {
+            const clear = el('button', 'section-btn', 'Clear');
+            clear.type = 'button';
+            clear.setAttribute('aria-label', 'Clear all recent places');
+            clear.addEventListener('pointerdown', holdList);
+            clear.addEventListener('click', (e) => {
+              e.stopPropagation();
+              clearRecent();
+              showQuickList();
+              showToast('Recent places cleared');
+            });
+            li.append(clear);
+          }
+          continue;
+        }
+        const place = section === 'Saved' ? saved[i] : recent[i];
+        i++;
+        if (!place) continue;
+        li.classList.add('has-x');
+        const x = el('button', 'row-x', '×');
+        x.type = 'button';
+        x.setAttribute('aria-label', 'Remove ' + place.name);
+        x.addEventListener('pointerdown', holdList);
+        x.addEventListener('click', (e) => {
+          e.stopPropagation();
+          removePlace(place);
+          showQuickList();
+          showToast('Removed');
+        });
+        li.append(x);
+      }
     }
 
     input.addEventListener('focus', showQuickList);
     input.addEventListener('blur', () => {
       setTimeout(() => {
+        if (keepQuick) return;
         if (list.dataset.quick && document.activeElement !== input) { list.innerHTML = ''; list.dataset.quick = ''; }
       }, 300);
     });
@@ -1721,13 +1870,31 @@
       updateArrow();
     }
 
+    // Remember on this phone that location was allowed, so the next open starts the dot by itself
+    let locationSaved = false;
+    function markLocationOK() {
+      locationAllowed = true;
+      if (!locationSaved) { locationSaved = true; save('locationOK', '1'); }
+    }
+
+    // On opening the app, the first location moves the map to you (unless you've already moved it)
+    let centredOnMe = false, userMovedMap = false;
+    map.on('movestart', (e) => { if (e && e.originalEvent) userMovedMap = true; });
+    function centreOnMeOnce(lng, lat) {
+      if (centredOnMe) return;
+      centredOnMe = true;
+      if (userMovedMap || riding || picked || start || end || !card.hidden) return;
+      map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15.5) });
+    }
+
     // Any successful location: remember it, show the dot, keep it updated from now on
     function gotLocation(pos) {
       const c = pos.coords;
       if (!inSingapore(c.latitude, c.longitude)) return;
-      locationAllowed = true;
+      markLocationOK();
       noteKnown(c);
       if (!riding) placeMe([c.longitude, c.latitude]);
+      centredOnMe = true;   // the caller is already moving the map
       startIdleWatch();
     }
 
@@ -1736,10 +1903,18 @@
       idleWatchId = navigator.geolocation.watchPosition((pos) => {
         const c = pos.coords;
         if (!inSingapore(c.latitude, c.longitude)) return;
-        locationAllowed = true;
+        markLocationOK();
         noteKnown(c);
-        if (!riding) placeMe([c.longitude, c.latitude]);
-      }, () => {}, { enableHighAccuracy: !rideSettings.batterySaver, maximumAge: 5000, timeout: 30000 });
+        if (!riding) { placeMe([c.longitude, c.latitude]); centreOnMeOnce(c.longitude, c.latitude); }
+      }, (err) => {
+        // Location switched off for this site: stop asking until the rider allows it again
+        if (err && err.code === 1) {
+          stopIdleWatch();
+          locationAllowed = false;
+          save('locationOK', '0');
+          locationSaved = false;
+        }
+      }, { enableHighAccuracy: !rideSettings.batterySaver, maximumAge: 5000, timeout: 30000 });
       startCompass();
     }
 
@@ -1754,14 +1929,21 @@
       else if (!riding) stopIdleWatch();
     });
 
-    // If location was allowed before, show the dot as soon as the app opens (no pop-up)
+    // If location was allowed before, show the dot and go to it as soon as the app opens.
+    // Some browsers (Brave, "allow for this visit only") forget the permission between visits;
+    // the app remembers you allowed it, so the browser simply asks again instead of staying silent.
     (async () => {
+      let state = 'unknown';
       try {
-        if (!navigator.permissions || !navigator.permissions.query) return;
-        const status = await navigator.permissions.query({ name: 'geolocation' });
-        if (status.state === 'granted') { locationAllowed = true; startIdleWatch(); }
-        status.onchange = () => { if (status.state === 'granted') { locationAllowed = true; startIdleWatch(); } };
-      } catch (e) { /* the dot appears after the first location instead */ }
+        if (navigator.permissions && navigator.permissions.query) {
+          const status = await navigator.permissions.query({ name: 'geolocation' });
+          state = status.state;
+          status.onchange = () => { if (status.state === 'granted') { locationAllowed = true; startIdleWatch(); } };
+        }
+      } catch (e) { /* not supported: rely on what this phone remembers */ }
+      let remembered = false;
+      try { remembered = localStorage.getItem('locationOK') === '1'; } catch (e) { /* storage blocked */ }
+      if (state === 'granted' || (state !== 'denied' && remembered)) startIdleWatch();
     })();
 
     // Which way the phone is facing, for the cone around the dot
@@ -1809,6 +1991,101 @@
       }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
     });
 
+    // ---------- park near the drop-off (motorbike and car) ----------
+    const VEHICLE_FOR = { moto: 'motorcycle', drive: 'car' };
+    let parkPlan = null;        // { dest }: riding to a car park first, then walking to dest
+    let walkLeg = null;         // { prevMode }: walking from the car park; the mode goes back after
+    let autoStartRide = false;  // start guiding as soon as the walk route is ready
+    let finalMarker = null;     // the drop-off, shown while heading to the car park
+
+    function walkMins(m) { return Math.max(1, Math.round(m * 1.3 / 1.25 / 60)); }   // streets aren't straight
+    function removeFinalMarker() { if (finalMarker) { finalMarker.remove(); finalMarker = null; } }
+
+    // "Park near Bedok Mall": the 3 closest car parks with free lots right now
+    function parkingBox() {
+      const vehicle = VEHICLE_FOR[mode];
+      if (!vehicle || !end || parkPlan || walkLeg) return null;
+      const group = vehicle === 'motorcycle' ? 'moto' : 'cars';
+      setAutoLayer(group);   // show the live lots on the map too
+      const box = el('div', 'park');
+      box.append(el('div', 'park-title', (vehicle === 'motorcycle' ? '🛵 Park near ' : '🚗 Park near ') + end.name));
+      const body = el('div', 'park-body', 'Checking free lots…');
+      box.append(body);
+      const target = end;
+      loadFeed('carparks').then((data) => {
+        if (end !== target || !box.isConnected) return;
+        body.innerHTML = '';
+        if (!data || !Array.isArray(data.carparks)) {
+          body.textContent = 'Parking info isn\u2019t available right now.';
+          return;
+        }
+        const near = data.carparks.filter((c) => c.vehicle === vehicle)
+          .map((c) => ({ c, d: metresBetween([c.lng, c.lat], [target.lng, target.lat]) }))
+          .filter((x) => x.d <= 700)
+          .sort((a, b) => a.d - b.d);
+        const free = near.filter((x) => x.c.lots > 0).slice(0, 3);
+        if (!free.length) {
+          body.textContent = near.length ? 'Car parks nearby are full right now.'
+            : 'No live lot counts within 700 m. Grey ' + (vehicle === 'motorcycle' ? 'M' : 'P') + ' on the map = other parking.';
+          return;
+        }
+        for (const { c, d } of free) {
+          const row = el('button', 'park-row');
+          row.type = 'button';
+          const words = el('span', 'park-name');
+          words.append(el('strong', null, niceName(c.name)), el('span', 'park-walk', formatDistance(d) + ' away · ~' + walkMins(d) + ' min walk'));
+          row.append(words, el('span', 'park-lots' + (c.lots < 5 ? ' low' : ''), c.lots + ' free'));
+          row.addEventListener('click', () => parkAt(c, target));
+          body.append(row);
+        }
+      });
+      return box;
+    }
+
+    // Ride to the car park first; the drop-off stays marked in purple
+    function parkAt(c, dest) {
+      parkPlan = { dest };
+      removeFinalMarker();
+      finalMarker = new maplibregl.Marker({ color: '#af52de' }).setLngLat([dest.lng, dest.lat]).addTo(map);
+      track('park_pick');
+      setPoint('end', { name: niceName(c.name), address: c.lots + ' free lots', lat: c.lat, lng: c.lng, noRecent: true });
+    }
+
+    // On the route card while heading to a car park: "then walk to Bedok Mall"
+    function parkPlanLine() {
+      if (!parkPlan || !end) return null;
+      const d = metresBetween([end.lng, end.lat], [parkPlan.dest.lng, parkPlan.dest.lat]);
+      const box = el('div', 'park');
+      box.append(el('div', 'park-title', '🅿️ Park here, then walk to ' + parkPlan.dest.name),
+                 el('div', 'park-walk', formatDistance(d) + ' · ~' + walkMins(d) + ' min walk'));
+      const undo = el('button', 'link-btn park-undo', 'Go straight to ' + parkPlan.dest.name + ' instead');
+      undo.type = 'button';
+      undo.addEventListener('click', () => {
+        const dest = parkPlan.dest;
+        parkPlan = null;
+        removeFinalMarker();
+        setPoint('end', dest);
+      });
+      box.append(undo);
+      return box;
+    }
+
+    // Parked: walk the last bit, with directions, then the mode goes back to motorbike or car
+    function startWalkLeg() {
+      if (!parkPlan) return;
+      const dest = parkPlan.dest;
+      const here = lastKnown && Date.now() - lastKnown.time < 60000 ? lastKnown : end;
+      walkLeg = { prevMode: mode };
+      parkPlan = null;
+      removeFinalMarker();
+      mode = 'walk';             // not saved: this is just for the last few metres
+      start = { name: 'My location', address: '', lat: here.lat, lng: here.lng };
+      if (startMarker) { startMarker.remove(); startMarker = null; }
+      autoStartRide = true;
+      track('park_walk');
+      setPoint('end', dest);
+    }
+
     // ---------- trip card ----------
     function tripLine(colour, label, place) {
       const line = el('div');
@@ -1831,6 +2108,14 @@
 
     function setMode(key) {
       if (key === mode) return;
+      walkLeg = null;
+      if (parkPlan && !VEHICLE_FOR[key]) {          // cycling or walking: no car park stop
+        end = parkPlan.dest;
+        parkPlan = null;
+        removeFinalMarker();
+        if (endMarker) endMarker.setLngLat([end.lng, end.lat]);
+      }
+      if (!VEHICLE_FOR[key]) clearAutoLayers();
       mode = key;
       save('mode', mode);
       if (map.getLayer('route-line')) map.setPaintProperty('route-line', 'line-color', lineColour());
@@ -1863,6 +2148,11 @@
     function clearRoute() {
       stopRide();
       routeRequest++;
+      parkPlan = null;
+      removeFinalMarker();
+      if (walkLeg) { mode = walkLeg.prevMode; walkLeg = null; }   // back to the rider's own mode
+      autoStartRide = false;
+      clearAutoLayers();
       shownCoords = null;
       start = end = picked = lastRoute = null;
       [startMarker, endMarker, pickedMarker].forEach((m) => m && m.remove());
@@ -1878,7 +2168,7 @@
       const m = MODES[mode];
       if (riding) showRideCard([el('div', 'sub', 'Rerouting from where you are…')]);
       else showTrip([el('div', 'sub', 'Finding a route ' + m.words + '…')]);
-      const url = '/api/route?type=' + mode
+      const url = '/api/route?type=' + (mode === 'moto' ? 'drive' : mode)   // motorbikes use the road routes
         + '&start=' + start.lat + ',' + start.lng
         + '&end=' + end.lat + ',' + end.lng;
       try {
@@ -1908,9 +2198,10 @@
         summary.append(
           document.createTextNode(formatDistance(data.distance_m)),
           el('small', null, '  ·  ' + formatTime(data.time_s) + ' ' + m.words));
-        showTrip([summary, etaButton(data.time_s || 0)]);
+        showTrip([summary, parkingBox() || parkPlanLine(), messageButton(data.time_s || 0)].filter(Boolean));
         track('route_' + mode);
         noteRouteDone();
+        if (autoStartRide) { autoStartRide = false; startRide(); }
       } catch (e) {
         if (myRequest !== routeRequest) return;
         if (riding) {
@@ -1974,7 +2265,7 @@
     let voiceOn = load('voice', ['on', 'off'], 'on') === 'on';
 
     // How early to warn about a turn (metres), and when to say "turn now"
-    const ANNOUNCE = { drive: { far: 300, near: 60 }, cycle: { far: 150, near: 30 }, walk: { far: 80, near: 20 } };
+    const ANNOUNCE = { drive: { far: 300, near: 60 }, moto: { far: 300, near: 60 }, cycle: { far: 150, near: 30 }, walk: { far: 80, near: 20 } };
     const SPOKEN_TURNS = ['left', 'right', 'slight_left', 'slight_right', 'sharp_left', 'sharp_right', 'uturn', 'roundabout'];
     const TURN_ANGLE = { straight: 0, depart: 0, roundabout: 0, arrive: 0, slight_right: 45, right: 90,
                          sharp_right: 135, uturn: 180, slight_left: -45, left: -90, sharp_left: -135 };
@@ -2184,6 +2475,7 @@
       lastHeavy = 0;
       lastAutoZoom = null;
       stopIdleWatch();                          // the ride's own location updates take over
+      rideStartedAt = Date.now();
       document.body.classList.add('riding');
       if (meEl()) meEl().classList.add('riding');
       keepScreenOn();
@@ -2216,11 +2508,14 @@
     }
 
     function endRide() {
+      const longEnough = rideStartedAt && Date.now() - rideStartedAt > 120000;
       stopRide();
       stopSpeaking();
       shownCoords = null;
       drawRoute();
-      showTrip();
+      if (longEnough) countRide();
+      const nudge = longEnough ? ratingNudge() : null;
+      showTrip(nudge ? [nudge] : []);
     }
 
     function onFix(pos) {
@@ -2244,7 +2539,7 @@
       }
       lastFix = { lat: c.latitude, lng: c.longitude, accuracy: c.accuracy || 0, heading, speedKmh, time: Date.now() };
       lastKnown = { lat: lastFix.lat, lng: lastFix.lng, accuracy: lastFix.accuracy, heading, time: lastFix.time };
-      locationAllowed = true;
+      markLocationOK();
 
       placeMe(here);
 
@@ -2360,12 +2655,31 @@
       stopRide();
       shownCoords = [];
       drawRoute();
-      const done = el('button', 'btn-go', 'Done');
-      done.addEventListener('click', clearRoute);
+      countRide();
       const row = el('div', 'row');
-      row.append(done);
-      showCard([el('div', 'summary', 'You have arrived'), el('div', 'sub', place), row]);
-      speak('You have arrived' + (end ? ' at ' + niceStreet(end.name) : '') + '.');
+      let parts;
+      if (parkPlan) {
+        // Reached the car park: one tap for walking directions to the drop-off
+        const dest = parkPlan.dest;
+        const d = end ? metresBetween([end.lng, end.lat], [dest.lng, dest.lat]) : 0;
+        const walk = el('button', 'btn-go', '🚶 Walk to ' + dest.name);
+        walk.addEventListener('click', startWalkLeg);
+        const done = el('button', 'btn-clear', 'Done');
+        done.addEventListener('click', clearRoute);
+        row.append(walk, done);
+        parts = [el('div', 'summary', 'Parked 🅿️'), el('div', 'sub', place + ' · ' + formatDistance(d) + ' to ' + dest.name), row];
+        speak('You have reached the car park. ' + niceStreet(dest.name) + ' is ' + spokenDistance(d) + ' away.');
+      } else {
+        const done = el('button', 'btn-go', 'Done');
+        done.addEventListener('click', clearRoute);
+        row.append(done);
+        parts = [el('div', 'summary', 'You have arrived'), el('div', 'sub', place), row];
+        speak('You have arrived' + (end ? ' at ' + niceStreet(end.name) : '') + '.');
+      }
+      parts.push(messageButton(null));
+      const nudge = ratingNudge();
+      if (nudge) parts.push(nudge);
+      showCard(parts);
       track('ride_arrived');
       letScreenSleep();
     }
@@ -2418,8 +2732,8 @@
       if (secondsLeft != null) {
         const share = el('button', 'ride-btn btn-share-eta', '💬');
         share.type = 'button';
-        share.setAttribute('aria-label', 'Send ETA to customer');
-        share.addEventListener('click', () => shareEta(secondsLeft));
+        share.setAttribute('aria-label', 'Message customer');
+        share.addEventListener('click', () => openReplies(secondsLeft));
         bar.append(share);
       }
       const voice = el('button', 'ride-btn btn-voice', voiceOn ? '🔊' : '🔇');
@@ -2444,7 +2758,7 @@
     }
 
     // ---------- anonymous usage counts (no user, device or location) ----------
-    const APP_VERSION = '2026.10.28';
+    const APP_VERSION = '2026.11.01';
     const lastTracked = {};
     function track(name) {
       if (!/^[a-z_:]{2,40}$/.test(name)) return;
@@ -2466,21 +2780,97 @@
     }
 
     // ---------- Share ETA with the customer ----------
-    const MODE_EMOJI = { cycle: '🚲', drive: '🚗', walk: '🚶' };
-    function etaButton(secondsLeft) {
-      const b = el('button', 'btn-share', '💬 Send ETA to customer');
+    const MODE_EMOJI = { cycle: '🚲', moto: '🛵', drive: '🚗', walk: '🚶' };
+    function messageButton(secondsLeft) {
+      const b = el('button', 'btn-share', '💬 Message customer');
       b.type = 'button';
-      b.addEventListener('click', () => shareEta(secondsLeft));
+      b.addEventListener('click', () => openReplies(secondsLeft));
       return b;
     }
-    async function shareEta(secondsLeft) {
-      const text = 'Hi! I am on the way ' + MODE_EMOJI[mode] + ' Arriving about ' + arrivalClock(secondsLeft) + '.';
-      track('share_eta');
-      // The phone's own share menu (WhatsApp, Telegram, SMS, Copy...), or WhatsApp directly
+
+    // The phone's own share menu (WhatsApp, Telegram, SMS, Copy...), or WhatsApp directly
+    async function shareText(text) {
       if (navigator.share) {
         try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
       }
       window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener');
+    }
+    async function shareEta(secondsLeft) {
+      track('share_eta');
+      return shareText('Hi! I am on the way ' + (MODE_EMOJI[mode] || '') + ' Arriving about ' + arrivalClock(secondsLeft) + '.');
+    }
+
+    // Quick replies riders send many times a shift. secondsLeft = null once arrived.
+    const QUICK_REPLIES = [
+      ['downstairs', 'Hi! I\u2019ve reached downstairs \ud83d\udc4b'],
+      ['lobby', 'Hi! I\u2019m here. Which lift lobby or block should I go to?'],
+      ['come_down', 'Hi! Can you come down to collect? Thank you \ud83d\ude4f'],
+      ['traffic', 'Sorry, stuck in traffic. About 5 more minutes \ud83d\ude4f'],
+      ['cant_find', 'Hi! I can\u2019t find the place. Can you call me?']
+    ];
+    function openReplies(secondsLeft) {
+      openPanel('replies', (panel) => {
+        panel.append(el('h2', null, 'Message customer'));
+        panel.append(el('p', 'sheet-note', 'Tap a message. It opens WhatsApp or your messaging app, ready to send.'));
+        const group = el('div', 'group');
+        const add = (key, text, action) => {
+          const b = el('button', 'menu-row reply-row', text);
+          b.type = 'button';
+          b.addEventListener('click', () => { closeSheet(); action(); });
+          group.append(b);
+        };
+        if (secondsLeft != null && secondsLeft >= 0) {
+          add('eta', '\ud83d\udd52 On the way, arriving about ' + arrivalClock(secondsLeft), () => shareEta(secondsLeft));
+        }
+        for (const [key, text] of QUICK_REPLIES) add(key, text, () => { track('reply_' + key); shareText(text); });
+        panel.append(group);
+        const cancel = el('button', 'sheet-cancel', 'Cancel');
+        cancel.type = 'button';
+        cancel.addEventListener('click', closeSheet);
+        panel.append(cancel);
+      });
+    }
+
+    // ---------- "How's the app so far?" after the 3rd and 15th finished ride ----------
+    function countRide() {
+      let n = 0;
+      try { n = Number(localStorage.getItem('ridesDone') || 0); } catch (e) { /* ignore */ }
+      save('ridesDone', String(n + 1));
+    }
+    function ratingNudge() {
+      let n = 0;
+      try { n = Number(localStorage.getItem('ridesDone') || 0); } catch (e) { return null; }
+      const asked = loadJson('ratingAsked', []);
+      const due = [3, 15].find((k) => n >= k && !asked.includes(k));
+      if (!due) return null;
+      saveJson('ratingAsked', [...asked, due]);   // ask once at each point, never nag
+      const box = el('div', 'rate');
+      const q = el('span', null, 'How\u2019s ' + document.title + ' so far?');
+      const up = el('button', 'rate-up', '\ud83d\udc4d');
+      const down = el('button', 'rate-down', '\ud83d\udc4e');
+      up.type = down.type = 'button';
+      up.setAttribute('aria-label', 'Good');
+      down.setAttribute('aria-label', 'Not good');
+      const send = (good) => postCommunity({ type: 'feedback', version: APP_VERSION,
+        message: (good ? '\ud83d\udc4d Good' : '\ud83d\udc4e Not good') + ' (quick rating after ' + n + ' rides)' }).catch(() => {});
+      up.addEventListener('click', () => {
+        send(true);
+        track('rate_up');
+        box.innerHTML = '';
+        const more = el('button', 'link-btn', 'Thanks! \ud83d\ude4f Tell us what to add next');
+        more.type = 'button';
+        more.addEventListener('click', () => openFeedback({ title: 'What should we add?', note: 'Glad it helps! What would make your shift even easier?' }));
+        box.append(more);
+      });
+      down.addEventListener('click', () => {
+        send(false);
+        track('rate_down');
+        box.innerHTML = '';
+        box.append(el('span', null, 'Thanks for telling us.'));
+        openFeedback({ title: 'What went wrong?', note: 'Sorry about that. Tell us what happened and we\u2019ll work on it.' });
+      });
+      box.append(q, up, down);
+      return box;
     }
 
     // ---------- community: closed places and rider-added places ----------
@@ -2595,10 +2985,11 @@
     }
 
     // ---------- feedback ----------
-    function openFeedback() {
+    function openFeedback(opts) {
+      const o = opts && opts.title ? opts : {};
       openPanel('feedback', (panel) => {
-        panel.append(el('h2', null, 'Send feedback'));
-        panel.append(el('p', 'sheet-note', 'Tell us what works, what doesn’t, and what you’d like next. It goes straight to the team behind ' + document.title + '.'));
+        panel.append(el('h2', null, o.title || 'Send feedback'));
+        panel.append(el('p', 'sheet-note', o.note || ('Tell us what works, what doesn’t, and what you’d like next. It goes straight to the team behind ' + document.title + '.')));
         const msgBox = el('textarea');
         Object.assign(msgBox, { maxLength: 2000, placeholder: 'Your feedback' });
         msgBox.classList.add('tall');
