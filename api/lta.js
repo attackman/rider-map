@@ -75,7 +75,10 @@ function readCarparks(rows) {
 
 // Bus interchanges and terminals ("Bedok Int", "Changi Village Ter") get a bigger dot on the map
 function isInterchange(name) {
-  return /\b(int|interchange|ter|terminal)$/i.test(name);        // at the end, so "Opp Int'l Business Pk" isn't one
+  // at the end, so "Opp Int'l Business Pk" isn't one; stops near one ("Opp Punggol Int") and
+  // ferry or cargo terminals ("Tanah Merah Ferry Ter") are ordinary stops
+  return /\b(int|interchange|ter|terminal)$/i.test(name)
+    && !/^(opp|aft|bef)\b/i.test(name) && !/\b(ferry|cargo|marine)\b/i.test(name);
 }
 
 function readBusStops(rows) {
