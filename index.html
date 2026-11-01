@@ -813,9 +813,9 @@
       incidents: ['ov-incidents-dot', 'ov-incidents-name'],
       moto: ['ov-moto-dot', 'ov-moto-num'],
       cars: ['ov-cars-dot', 'ov-cars-num'],
-      bus: ['ov-bus-dot', 'ov-bus-letter', 'ov-bus-name']
+      bus: ['ov-bus-int-dot', 'ov-bus-dot', 'ov-bus-int-letter', 'ov-bus-letter', 'ov-bus-int-name', 'ov-bus-name']
     };
-    const OVERLAY_TAP = ['ov-community-dot', 'ov-incidents-dot', 'ov-moto-dot', 'ov-cars-dot', 'ov-bus-dot', 'ov-osm-parking', 'ov-amen-dot', 'ov-raining-dot', 'ov-rain-area'];
+    const OVERLAY_TAP = ['ov-community-dot', 'ov-incidents-dot', 'ov-moto-dot', 'ov-cars-dot', 'ov-bus-int-dot', 'ov-bus-dot', 'ov-osm-parking', 'ov-amen-dot', 'ov-raining-dot', 'ov-rain-area'];
     const RAIN_COLOUR = ['case', ['in', 'Thunder', ['get', 'forecast']], '#af52de',
                          ['in', 'Shower', ['get', 'forecast']], '#007aff', '#5ac8fa'];
 
@@ -859,22 +859,29 @@
                   'text-allow-overlap': true, 'text-ignore-placement': true },
         paint: { 'text-color': '#ffffff' } });
 
-      // Bus stops: a small teal dot with a B once zoomed in; interchanges bigger and from further out.
+      // Bus stops: a teal dot with a B and the 5-digit stop code under it once zoomed in;
+      // interchanges bigger and from further out. Separate layers for interchanges and ordinary
+      // stops, because MapLibre only allows zoom at the top of a style rule (never inside a case).
       // Drawn under the parking numbers so free lots stay readable.
-      const INT = ['==', ['get', 'int'], 1];
-      map.addLayer({ id: 'ov-bus-dot', type: 'circle', source: 'ov-bus', minzoom: 12,
-        filter: ['any', INT, ['>=', ['zoom'], 15]], paint: {
-          'circle-radius': ['case', INT, ['interpolate', ['linear'], ['zoom'], 12, 7, 16, 12], ['interpolate', ['linear'], ['zoom'], 15, 6, 18, 9]],
-          'circle-color': '#00897b', 'circle-stroke-width': 1.8, 'circle-stroke-color': edge } });
-      map.addLayer({ id: 'ov-bus-letter', type: 'symbol', source: 'ov-bus', minzoom: 12,
-        filter: ['any', INT, ['>=', ['zoom'], 16]],
-        layout: { 'text-field': 'B', 'text-font': font, 'text-size': ['case', INT, 12, 10],
-                  'text-allow-overlap': true, 'text-ignore-placement': true },
+      const INT = ['==', ['get', 'int'], 1], NOT_INT = ['!=', ['get', 'int'], 1];
+      const NAME_CODE = ['concat', ['get', 'name'], '\n', ['get', 'code']];
+      const busDot = (id, filter, minzoom, radius) => map.addLayer({ id, type: 'circle', source: 'ov-bus', minzoom, filter,
+        paint: { 'circle-radius': radius, 'circle-color': '#00897b', 'circle-stroke-width': 1.8, 'circle-stroke-color': edge } });
+      const busLetter = (id, filter, minzoom, size) => map.addLayer({ id, type: 'symbol', source: 'ov-bus', minzoom, filter,
+        layout: { 'text-field': 'B', 'text-font': font, 'text-size': size, 'text-allow-overlap': true, 'text-ignore-placement': true },
         paint: { 'text-color': '#ffffff' } });
-      map.addLayer({ id: 'ov-bus-name', type: 'symbol', source: 'ov-bus', minzoom: 13,
-        filter: ['any', INT, ['>=', ['zoom'], 17]],
-        layout: { 'text-field': ['get', 'name'], 'text-font': font, 'text-size': ['case', INT, 13, 11.5],
-                  'text-anchor': 'top', 'text-offset': [0, 1], 'text-max-width': 8, 'text-optional': true },
+      busDot('ov-bus-int-dot', INT, 12, ['interpolate', ['linear'], ['zoom'], 12, 7, 16, 12]);
+      busDot('ov-bus-dot', NOT_INT, 15, ['interpolate', ['linear'], ['zoom'], 15, 6, 18, 9]);
+      busLetter('ov-bus-int-letter', INT, 12, 12);
+      busLetter('ov-bus-letter', NOT_INT, 16, 10);
+      // Interchanges: name and code from zoom 13. Stops: the code from 16, name and code from 17.
+      map.addLayer({ id: 'ov-bus-int-name', type: 'symbol', source: 'ov-bus', minzoom: 13, filter: INT,
+        layout: { 'text-field': NAME_CODE, 'text-font': font, 'text-size': 12.5, 'text-anchor': 'top',
+                  'text-offset': [0, 1.1], 'text-max-width': 9, 'text-optional': true },
+        paint: labelPaint });
+      map.addLayer({ id: 'ov-bus-name', type: 'symbol', source: 'ov-bus', minzoom: 16, filter: NOT_INT,
+        layout: { 'text-field': ['step', ['zoom'], ['get', 'code'], 17, NAME_CODE], 'text-font': font, 'text-size': 11.5,
+                  'text-anchor': 'top', 'text-offset': [0, 0.9], 'text-max-width': 8, 'text-optional': true },
         paint: labelPaint });
 
       // Parking: a numbered dot per car park (motorcycles on the left, cars on the right)
@@ -1030,7 +1037,7 @@
         let d = Math.hypot(px.x - p.x, px.y - p.y);
         if (f.layer && f.layer.id === 'ov-rain-area') d += 1000; // big rain circles lose to anything closer
         if (f.layer && f.layer.id === 'ov-osm-parking') d += 8;   // live lot counts win over plain car park markers
-        if (f.layer && f.layer.id === 'ov-bus-dot') d += 6;       // parking counts win over a bus stop at the same spot
+        if (f.layer && /^ov-bus/.test(f.layer.id)) d += 6;          // parking counts win over a bus stop at the same spot
         if (d < bestDistance) { bestDistance = d; best = Object.assign(place, { lng: c[0], lat: c[1] }); }
       }
       if (best) choose(best);
@@ -2876,7 +2883,7 @@
     }
 
     // ---------- anonymous usage counts (no user, device or location) ----------
-    const APP_VERSION = '2026.11.05';
+    const APP_VERSION = '2026.11.06';
     const lastTracked = {};
     function track(name) {
       if (!/^[a-z_:]{2,40}$/.test(name)) return;

@@ -4,7 +4,7 @@
 // - App files (icons, map library): use the saved copy, refresh it in the background.
 // - Search and routes (/api/...) and map tiles: never saved, always live.
 
-const CACHE = 'riderkaki-v5';
+const CACHE = 'riderkaki-v6';
 const APP_FILES = [
   '/',
   '/manifest.webmanifest',
