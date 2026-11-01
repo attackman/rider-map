@@ -3084,23 +3084,23 @@
           panel.append(box);
         };
         section('What it does', [
-          name + ' is a free map for Singapore delivery riders: search places, get cycling, driving or walking routes with spoken directions, and see rain, traffic, parking, toilets and shelters.'
+          name + ' is a free map for Singapore delivery riders: search places, get cycling, motorbike, driving or walking routes with spoken directions, and see rain, traffic, parking, toilets and shelters.'
         ]);
         section('Your privacy', [
           'Your location stays on your phone. It is used to show where you are and guide you, and is never stored.',
-          'To find places and routes, your search words, the middle of the map, and your start and end points are sent to our server and to the map services below, only to answer that request.',
+          'To find places and routes, your search words, the middle of the map, and your start and end points are sent to our server and to the map services we use (see Map and data credits), only to answer that request.',
           'Saved and recent places, and your settings, are kept on your phone only.',
           '"Closed for good" and "Add a missing place" store the place and its location, not who sent them.',
           'Feedback stores what you write, and a contact only if you give one.',
           'We count which features are used and how many people visit, without cookies and without identifying you.'
         ]);
-        section('Data and map credits', [
-          'Map data © OpenStreetMap contributors. Map tiles: OpenFreeMap, © OpenMapTiles.',
-          'Addresses and routes: OneMap, © Singapore Land Authority.',
-          'Traffic incidents and car park availability: LTA DataMall.',
-          'Weather and heat stress: National Environment Agency, via data.gov.sg (Singapore Open Data Licence).',
-          'Business search: Photon by komoot, using OpenStreetMap data.'
-        ]);
+        // Credits are required by the data licences; kept one tap away so About stays short
+        const more = el('div', 'group');
+        const creditsRow = el('button', 'menu-row', 'Map and data credits');
+        creditsRow.type = 'button';
+        creditsRow.addEventListener('click', openCredits);
+        more.append(creditsRow);
+        panel.append(el('h3', null, 'Credits'), more);
         section('Contact', ['Questions or problems? Use Send feedback and leave a way to reach you.']);
         panel.append(el('p', 'sheet-note', 'Version ' + APP_VERSION));
         const fb = el('button', 'sheet-cancel', 'Send feedback');
@@ -3110,6 +3110,28 @@
         done.type = 'button';
         done.addEventListener('click', closeSheet);
         panel.append(done, fb);
+      });
+    }
+
+    // ---------- map and data credits (opened from About) ----------
+    const CREDITS = [
+      'Map data © OpenStreetMap contributors. Map tiles: OpenFreeMap, © OpenMapTiles.',
+      'Addresses and routes: OneMap, © Singapore Land Authority.',
+      'Traffic incidents and car park availability: LTA DataMall.',
+      'Weather and heat stress: National Environment Agency, via data.gov.sg (Singapore Open Data Licence).',
+      'Business search: Photon by komoot, using OpenStreetMap data.'
+    ];
+    function openCredits() {
+      openPanel('credits', (panel) => {
+        panel.append(el('h2', null, 'Map and data credits'));
+        panel.append(el('p', 'sheet-note', document.title + ' is built on free and open data. Thank you to:'));
+        const box = el('div', 'group about');
+        for (const line of CREDITS) box.append(el('p', null, line));
+        panel.append(box);
+        const back = el('button', 'sheet-done', 'Back');
+        back.type = 'button';
+        back.addEventListener('click', openAbout);
+        panel.append(back);
       });
     }
 
