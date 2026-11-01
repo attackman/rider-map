@@ -175,7 +175,13 @@ async function searchPlaces(q, lat, lng) {
       if (!out.some((o) => o.address === r.address && Math.abs(o.lat - r.lat) < 1e-5)) out.push(r);
     }
   }
-  if (full || !aq) return out;
+  if (full && !aq) {
+    // The place itself before things inside it: "Singapore General Hospital" before "SGH Blk 4 (Taxi Stand)"
+    const want = full.toUpperCase();
+    const rank = (r) => (String(r.name).toUpperCase().startsWith(want) ? 0 : String(r.name).toUpperCase().includes(want) ? 1 : 2);
+    return out.map((r, i) => ({ r, i })).sort((x, y) => rank(x.r) - rank(y.r) || x.i - y.i).map((x) => x.r);
+  }
+  if (!aq) return out;
   // A block address: the matching block first; with no area given ("blk 298"), the nearest first
   const here = lat != null && lng != null ? { lat, lng } : null;
   const score = (r) => (r.blk === aq.blk ? 0 : 1) * 1e7 + (here && !aq.area ? metresApart(r, here) : 0);
