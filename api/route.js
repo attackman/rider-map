@@ -3,6 +3,8 @@
 // Logs in to OneMap with ONEMAP_EMAIL / ONEMAP_PASSWORD (Vercel environment
 // variables), asks OneMap for a route, and returns the line plus distance and time.
 
+const { quickLimit, tooMany } = require('./_security');
+
 let cachedToken = null;
 let tokenExpiresAt = 0; // milliseconds
 
@@ -118,6 +120,7 @@ async function fetchRoute(start, end, type, token) {
 }
 
 module.exports = async (req, res) => {
+  if (!quickLimit(req, 'route', 120, 60000)) return tooMany(res);
   const q = req.query || {};
   const start = parsePoint(q.start);
   const end = parsePoint(q.end);
@@ -154,6 +157,7 @@ module.exports = async (req, res) => {
       steps: parseSteps(data.route_instructions)
     });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    console.error('route error', err && err.message);
+    return res.status(500).json({ error: 'Directions are not working right now. Please try again.' });
   }
 };

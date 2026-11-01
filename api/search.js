@@ -6,6 +6,8 @@
 //      favouring ones near lat/lng (the middle of the map on the phone).
 // If one source fails, results from the other are still returned.
 
+const { quickLimit, tooMany } = require('./_security');
+
 let cachedToken = null;
 let tokenExpiresAt = 0; // milliseconds
 
@@ -278,6 +280,7 @@ function readCoord(value, min, max) {
 }
 
 module.exports = async (req, res) => {
+  if (!quickLimit(req, 'search', 120, 60000)) return tooMany(res);
   const query = req.query || {};
   const q = String(query.q || '').trim().slice(0, 100);
   if (q.length < 2) {
@@ -293,7 +296,8 @@ module.exports = async (req, res) => {
   ]);
 
   if (placesResult.status === 'rejected' && businessResult.status === 'rejected') {
-    return res.status(502).json({ error: placesResult.reason.message });
+    console.error('search failed', placesResult.reason && placesResult.reason.message, businessResult.reason && businessResult.reason.message);
+    return res.status(502).json({ error: 'Search is not working right now. Please try again.' });
   }
 
   const places = placesResult.status === 'fulfilled' ? placesResult.value : [];

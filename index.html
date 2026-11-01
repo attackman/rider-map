@@ -22,7 +22,7 @@
   <meta name="apple-mobile-web-app-title" content="RiderKaki" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@^6.15.0/dist/maplibre-gl.css" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.css" />
   <!-- Vercel Web Analytics: anonymous visitor counts, no cookies (switch on under Analytics in Vercel) -->
   <script defer src="/_vercel/insights/script.js"></script>
   <!-- Apple-style type: SF Pro on Apple devices; Inter (a free, very similar font) elsewhere -->
@@ -540,7 +540,7 @@
   </div>
 
   <script type="module">
-    import * as maplibregl from 'https://unpkg.com/maplibre-gl@^6.15.0/dist/maplibre-gl.mjs';
+    import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.mjs';
 
     const START_COLOUR = '#34c759';
     const END_COLOUR = '#ff3b30';
@@ -736,8 +736,7 @@
     const feeds = {
       weather:   { url: '/api/weather',             maxAge: 10 * 60 * 1000 },
       incidents: { url: '/api/lta?kind=incidents',  maxAge: 3 * 60 * 1000 },
-      carparks:  { url: '/api/lta?kind=carparks',   maxAge: 3 * 60 * 1000 },
-      amenities: { url: '/api/amenities',           maxAge: 24 * 60 * 60 * 1000 }
+      carparks:  { url: '/api/lta?kind=carparks',   maxAge: 3 * 60 * 1000 }
     };
     for (const f of Object.values(feeds)) Object.assign(f, { data: null, at: 0, error: null, loading: null });
 
@@ -2816,7 +2815,7 @@
     }
 
     // ---------- anonymous usage counts (no user, device or location) ----------
-    const APP_VERSION = '2026.11.01';
+    const APP_VERSION = '2026.11.02';
     const lastTracked = {};
     function track(name) {
       if (!/^[a-z_:]{2,40}$/.test(name)) return;
@@ -3011,7 +3010,7 @@
       try {
         await postCommunity({ type: 'closed', name: place.name, lat: place.lat, lng: place.lng });
         community.closed.push({ name: place.name, lat: place.lat, lng: place.lng, count: closedReports(place) + 1 });
-        button.textContent = 'Reported. Thanks for helping other riders!';
+        button.textContent = 'Reported. Thanks! It shows for others once another rider confirms.';
         track('report_closed');
       } catch (e) {
         button.disabled = false;

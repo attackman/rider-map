@@ -92,6 +92,7 @@ module.exports = async (req, res) => {
     }
     return res.status(400).json({ error: 'Ask for kind=incidents or kind=carparks' });
   } catch (err) {
-    return res.status(err.status || 500).json({ error: err.name === 'AbortError' ? 'LTA took too long to answer' : err.message });
+    console.error('lta error', err && err.message);   // details stay in the Vercel logs
+    return res.status(err.status || 500).json({ error: err.name === 'AbortError' ? 'LTA took too long to answer' : 'Live data is not available right now. Please try again.' });
   }
 };
