@@ -266,6 +266,8 @@
     .sheet[hidden] { display: none; }
     .sheet-panel {
       position: absolute; left: 0; right: 0; bottom: 0; max-height: 88vh; overflow-y: auto;
+      /* the screen space you can actually see, between the browser's address bar and toolbar */
+      max-height: calc(100dvh - 24px); overscroll-behavior: contain; box-sizing: border-box;
       background: var(--bg); color: var(--text); border-radius: 14px 14px 0 0;
       padding: 8px 16px calc(env(safe-area-inset-bottom, 0px) + 16px); box-shadow: var(--shadow);
     }
@@ -505,8 +507,11 @@
     .form-msg { min-height: 20px; margin: 0 4px; font-size: 15px; color: var(--error); }
     .group.about { padding: 4px 16px; }
     .group.about p { margin: 10px 0; font-size: 15px; line-height: 1.45; }
-    .welcome h2 { font-size: 28px; margin-top: 8px; }
-    .welcome-row { display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; }
+    .welcome h2 { font-size: 26px; margin: 2px 0 6px 4px; }
+    .welcome .sheet-note { margin-bottom: 12px; }
+    .welcome-actions { display: flex; gap: 8px; margin-top: 6px; }
+    .welcome-actions .sheet-cancel { flex: 1; margin-top: 0; }
+    .welcome-row { display: flex; gap: 14px; align-items: flex-start; padding: 10px 0; }
     .welcome-row + .welcome-row { border-top: 0.5px solid var(--line); }
     .welcome-icon { font-size: 26px; line-height: 1; flex: none; width: 32px; text-align: center; }
     .welcome-row strong { display: block; font-size: 17px; font-weight: 600; }
@@ -2828,7 +2833,7 @@
     }
 
     // ---------- anonymous usage counts (no user, device or location) ----------
-    const APP_VERSION = '2026.11.03';
+    const APP_VERSION = '2026.11.04';
     const lastTracked = {};
     function track(name) {
       if (!/^[a-z_:]{2,40}$/.test(name)) return;
@@ -3215,7 +3220,7 @@
         const points = el('div', 'group about');
         for (const [icon, title, text] of [
           ['🔎', 'Search anything', 'Places, postal codes, shops and food, plus places added by riders.'],
-          ['🧭', 'Routes with voice', 'Cycle, drive or walk, with spoken turn-by-turn directions.'],
+          ['🧭', 'Routes with voice', 'Motorbike, cycle, drive or walk, with spoken directions.'],
           ['🌧', 'Rain and heat alerts', 'Know before the rain hits, and when to drink water.'],
           ['🅿️', 'Parking and more', 'Live free lots, toilets, water and shelters on the map.']]) {
           const row = el('div', 'welcome-row');
@@ -3225,7 +3230,7 @@
           points.append(row);
         }
         panel.append(points);
-        panel.append(el('p', 'sheet-note', 'Your location stays on your phone and is never stored. It is only used to show where you are and guide you.'));
+        panel.append(el('p', 'sheet-note', 'Your location stays on your phone and is never stored.'));
         const finish = () => { save('welcomed', '1'); closeSheet(); };
         const allow = el('button', 'sheet-done', 'Allow location');
         allow.type = 'button';
@@ -3242,16 +3247,18 @@
           { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
         });
         panel.append(allow);
+        const actions = el('div', 'welcome-actions');   // side by side, so the card fits short screens
         if (!isInstalled() && (installPrompt || isPhone)) {
           const inst = el('button', 'sheet-cancel', 'Add to home screen');
           inst.type = 'button';
           inst.addEventListener('click', () => { finish(); onInstallClick(); });
-          panel.append(inst);
+          actions.append(inst);
         }
         const later = el('button', 'sheet-cancel', 'Not now');
         later.type = 'button';
         later.addEventListener('click', finish);
-        panel.append(later);
+        actions.append(later);
+        panel.append(actions);
       });
     }
 
