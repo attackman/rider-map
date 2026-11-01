@@ -1047,7 +1047,8 @@
 
       panel.append(el('h3', null, 'More'));
       const more = el('div', 'group');
-      for (const [label, action] of [['Add a missing place', () => startAddPlace('')],
+      for (const [label, action] of [['\ud83e\udd1d Invite a kaki', () => { closeSheet(); inviteKaki('menu'); }],
+                                     ['Add a missing place', () => startAddPlace('')],
                                      ['Send feedback', openFeedback],
                                      ['About and privacy', openAbout]]) {
         const b = el('button', 'menu-row', label);
@@ -2721,6 +2722,7 @@
       parts.push(messageButton(null));
       const nudge = ratingNudge();
       if (nudge) parts.push(nudge);
+      else if (!parkPlan) { const inv = inviteNudge(); if (inv) parts.push(inv); }
       showCard(parts);
       track('ride_arrived');
       letScreenSleep();
@@ -2841,10 +2843,57 @@
     // The phone's own share menu (WhatsApp, Telegram, SMS, Copy...), or WhatsApp directly
     async function shareText(text) {
       if (navigator.share) {
-        try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+        try { await navigator.share({ text }); return true; } catch (e) { if (e && e.name === 'AbortError') return false; }
       }
       window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener');
+      return true;
     }
+
+    // ---------- "Invite a kaki": share the app with another rider ----------
+    function inviteLink() { return location.origin + '/?from=invite'; }
+    async function inviteKaki(where) {
+      track('invite_open');
+      if (where) track('invite_' + where);
+      const text = 'Bro, try ' + document.title + ' \ud83d\udef5 Free map for delivery riders: rain alerts, motorbike lots near your drop-off, '
+        + 'voice directions & one-tap \u201creached downstairs\u201d messages. No download needed \ud83d\udc49 ' + inviteLink();
+      const sent = await shareText(text);
+      if (sent) { track('invite_sent'); showToast('Thanks for sharing! \ud83d\ude4f'); }
+    }
+    function inviteButton(where) {
+      const b = el('button', 'link-btn invite-btn', '\ud83e\udd1d Know a rider? Invite a kaki');
+      b.type = 'button';
+      b.addEventListener('click', () => inviteKaki(where));
+      return b;
+    }
+    // After a delivery, now and then (from the 2nd ride, at most once every 3 days)
+    function inviteNudge() {
+      let n = 0, last = 0;
+      try { n = Number(localStorage.getItem('ridesDone') || 0); last = Number(localStorage.getItem('inviteShownAt') || 0); } catch (e) { return null; }
+      if (n < 2 || Date.now() - last < 3 * 24 * 3600 * 1000) return null;
+      save('inviteShownAt', String(Date.now()));
+      const box = el('div', 'links');
+      box.append(inviteButton('arrival'));
+      return box;
+    }
+
+    // ---------- where new riders come from: ?from=fb, ?from=tiktok, ?from=invite ... ----------
+    // Counted once per phone per source (no names, no device IDs), then the link is tidied
+    // so a rider who copies it from the address bar doesn't count as that source again.
+    (function () {
+      let src = '';
+      try {
+        const q = new URLSearchParams(location.search);
+        src = String(q.get('from') || q.get('utm_source') || '').toLowerCase().replace(/[^a-z]/g, '').slice(0, 20);
+      } catch (e) { return; }
+      if (!src || src.length < 2) return;
+      const seen = loadJson('fromSeen', []);
+      if (!seen.includes(src)) {
+        track('from_' + src);
+        saveJson('fromSeen', [...seen, src].slice(-20));
+        try { if (!localStorage.getItem('firstFrom')) localStorage.setItem('firstFrom', src); } catch (e) { /* ignore */ }
+      }
+      try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) { /* ignore */ }
+    })();
     async function shareEta(secondsLeft) {
       track('share_eta');
       return shareText('Hi! I am on the way ' + (MODE_EMOJI[mode] || '') + ' Arriving about ' + arrivalClock(secondsLeft) + '.');
