@@ -160,6 +160,7 @@
     .results .name { font-weight: 600; font-size: 17px; color: var(--text); }
     .results .addr { font-size: 15px; color: var(--muted); margin-top: 2px; }
     .results .msg { color: var(--muted); cursor: default; }
+    .results li.hint { font-size: 13px; padding: 9px 16px 7px; min-height: 0; }
     .results .tag {
       display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 6px;
       background: var(--tint-blue); color: var(--accent); font-size: 12px; font-weight: 600;
@@ -1509,9 +1510,14 @@
       return niceStreet(text).replace(/\bSingapore (\d{6})\b/, 'Singapore $1');
     }
 
-    function showResults(results, q) {
+    function showResults(results, q, searchedFor) {
       list.innerHTML = '';
       list.dataset.quick = '';
+      // "SNEC" was searched as its full name: say so, so riders know they were understood
+      if (searchedFor) {
+        const full = niceStreet(String(searchedFor).toUpperCase()).replace(/ (Of|And|The|For) /g, (m) => m.toLowerCase());
+        list.appendChild(el('li', 'msg hint', 'Showing results for \u201c' + full + '\u201d'));
+      }
       if (!results.length) list.appendChild(el('li', 'msg', 'No places found'));
       for (const r of results) {
         const li = el('li');
@@ -1541,7 +1547,7 @@
         if (q !== lastQuery) return;
         // OneMap names come in capitals; show them in normal case, like the rest of the app
         showResults([...communityMatches(q), ...(data.results || []).map((r) => r.category ? r
-          : { ...r, name: niceName(r.name), address: niceName(r.address) })], q);
+          : { ...r, name: niceName(r.name), address: niceName(r.address) })], q, data.searchedFor);
         track('search');
       } catch (e) {
         if (q === lastQuery) showMessage('Search problem: ' + e.message);
@@ -2323,7 +2329,7 @@
     // Short forms that stay in capitals
     const ACRONYMS = ['MRT', 'LRT', 'HDB', 'NTUC', 'SAFRA', 'NUS', 'NTU', 'SMU', 'SIT', 'SUTD', 'SUSS', 'ITE', 'CC',
                       'RC', 'JTC', 'PUB', 'NEA', 'LTA', 'URA', 'SGH', 'KKH', 'TTSH', 'NUH', 'CGH', 'SKH', 'KTPH', 'IMH',
-                      'YMCA', 'YWCA', 'ICA', 'MOE', 'CPF', 'IRAS', 'NLB', 'UOB', 'OCBC', 'DBS', 'POSB', 'ATM', 'PCN', 'SG', 'HVP', 'FC'];
+                      'YMCA', 'YWCA', 'ICA', 'KK', 'MOE', 'CPF', 'IRAS', 'NLB', 'UOB', 'OCBC', 'DBS', 'POSB', 'ATM', 'PCN', 'SG', 'HVP', 'FC'];
 
     // "BEDOK NTH AVE 1" -> "Bedok North Avenue 1"
     function niceStreet(s) {

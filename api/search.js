@@ -74,6 +74,51 @@ async function searchOneMap(query) {
   }).filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
 }
 
+// ---------- short forms Singaporeans use ----------
+// "SNEC" -> "Singapore National Eye Centre". OneMap only knows most places by their full name.
+const PLACE_ALIASES = {
+  // hospitals and health
+  sgh: 'singapore general hospital', snec: 'singapore national eye centre', nuh: 'national university hospital',
+  ttsh: 'tan tock seng hospital', cgh: 'changi general hospital', ktph: 'khoo teck puat hospital',
+  kkh: "kk women's and children's hospital", skh: 'sengkang general hospital', skgh: 'sengkang general hospital',
+  ntfgh: 'ng teng fong general hospital', imh: 'institute of mental health', nccs: 'national cancer centre singapore',
+  nhcs: 'national heart centre singapore', ndcs: 'national dental centre singapore', nni: 'national neuroscience institute',
+  jch: 'jurong community hospital', ych: 'yishun community hospital', ojch: 'outram community hospital',
+  // universities, polytechnics, schools
+  nus: 'national university of singapore', ntu: 'nanyang technological university', smu: 'singapore management university',
+  sutd: 'singapore university of technology and design', sit: 'singapore institute of technology',
+  suss: 'singapore university of social sciences', np: 'ngee ann polytechnic', sp: 'singapore polytechnic',
+  tp: 'temasek polytechnic', rp: 'republic polytechnic', nyp: 'nanyang polytechnic', nafa: 'nanyang academy of fine arts',
+  // government offices
+  ica: 'ica building', mom: 'ministry of manpower', cpf: 'cpf building', hdb: 'hdb hub', iras: 'revenue house',
+  ura: 'ura centre', nlb: 'national library', scdf: 'scdf headquarters',
+  // malls, attractions, landmarks
+  mbs: 'marina bay sands', rws: 'resorts world sentosa', gbtb: 'gardens by the bay', plq: 'paya lebar quarter',
+  jp: 'jurong point', cwp: 'causeway point', mbfc: 'marina bay financial centre', cq: 'clarke quay',
+  hv: 'holland village', sbg: 'singapore botanic gardens', ecp: 'east coast park', wcp: 'west coast park',
+  t1: 'changi airport terminal 1', t2: 'changi airport terminal 2', t3: 'changi airport terminal 3', t4: 'changi airport terminal 4',
+  // towns
+  amk: 'ang mo kio', tpy: 'toa payoh', cck: 'choa chu kang', bbt: 'bukit batok', bp: 'bukit panjang', jw: 'jurong west',
+  je: 'jurong east', pr: 'pasir ris', sk: 'sengkang', pg: 'punggol', ys: 'yishun', wl: 'woodlands', ctrl: 'central'
+};
+// short forms that are also normal words in other searches: only expand when typed alone or first
+const TOWN_ONLY_FIRST = new Set(['bp', 'jw', 'je', 'pr', 'sk', 'pg', 'ys', 'wl', 'ctrl', 'np', 'sp', 'tp', 'rp', 'jp', 'hv', 'cq', 'mom', 'sit', 'ica', 'cpf', 'hdb', 'ura']);
+
+// Returns the search with short forms spelled out, or null if there's nothing to expand
+function expandAliases(q) {
+  const words = String(q).toLowerCase().replace(/[^a-z0-9' ]/g, ' ').split(/\s+/).filter(Boolean);
+  if (!words.length) return null;
+  let changed = false;
+  const out = words.map((w, i) => {
+    const full = PLACE_ALIASES[w];
+    if (!full) return w;
+    if (TOWN_ONLY_FIRST.has(w) && i > 0) return w;
+    changed = true;
+    return full;
+  });
+  return changed ? out.join(' ') : null;
+}
+
 // ---------- understanding how riders type addresses ----------
 // "Tampines Blk 298", "blk 298 tampines", "Tampines 298", "298 tampines st 22 #05-123"
 // all mean block 298 in Tampines. OneMap understands "298 TAMPINES STREET 22", so rewrite to that.
@@ -83,7 +128,8 @@ const ROAD_WORDS = {
   sth: 'south', south: 'south', east: 'east', west: 'west', jln: 'jalan', jalan: 'jalan', lor: 'lorong', lorong: 'lorong',
   bt: 'bukit', upp: 'upper', lwr: 'lower', pl: 'place', place: 'place', cl: 'close', close: 'close', ln: 'lane', lane: 'lane',
   lk: 'link', link: 'link', walk: 'walk', way: 'way', ter: 'terrace', terrace: 'terrace', vw: 'view', view: 'view',
-  rise: 'rise', ring: 'ring', hts: 'heights', heights: 'heights', pk: 'park', sq: 'square', tg: 'tanjong', kg: 'kampong'
+  rise: 'rise', ring: 'ring', hts: 'heights', heights: 'heights', pk: 'park', sq: 'square', tg: 'tanjong', kg: 'kampong',
+  amk: 'ang mo kio', tpy: 'toa payoh', cck: 'choa chu kang', bbt: 'bukit batok'
 };
 // a number straight after one of these is a street number ("street 22"), not a block
 const NUMBERED_ROADS = new Set(['st', 'street', 'ave', 'avenue', 'rd', 'road', 'dr', 'drive', 'cres', 'crescent', 'ctrl', 'central',
@@ -115,17 +161,22 @@ function addressQuery(q) {
 // Ask OneMap the rider's words and the rewritten address; matching blocks first,
 // and with no area given ("blk 298"), the nearest ones first
 async function searchPlaces(q, lat, lng) {
-  const aq = addressQuery(q);
-  if (!aq || aq.query === q.toLowerCase().trim()) return searchOneMap(q);
-  const [asAddress, asTyped] = await Promise.allSettled([searchOneMap(aq.query), searchOneMap(q)]);
-  if (asAddress.status === 'rejected' && asTyped.status === 'rejected') throw asAddress.reason;
-  const a = asAddress.status === 'fulfilled' ? asAddress.value : [];
-  const t = asTyped.status === 'fulfilled' ? asTyped.value : [];
+  const full = expandAliases(q);                 // "snec" -> "singapore national eye centre"
+  const aq = addressQuery(full || q);            // "tampines blk 298" -> "298 tampines"
+  const asks = [full, aq && aq.query].filter((x, i, a) => x && x !== q.toLowerCase().trim() && a.indexOf(x) === i);
+  if (!asks.length) return searchOneMap(q);
+  // Ask OneMap every reading at once: spelled-out name, then the block address, then the rider's own words
+  const answers = await Promise.allSettled([...asks, q].map((x) => searchOneMap(x)));
+  if (answers.every((a) => a.status === 'rejected')) throw answers[0].reason;
   const out = [];
-  for (const r of [...a, ...t]) {
-    if (out.some((o) => o.address === r.address && Math.abs(o.lat - r.lat) < 1e-5)) continue;
-    out.push(r);
+  for (const a of answers) {
+    if (a.status !== 'fulfilled') continue;
+    for (const r of a.value) {
+      if (!out.some((o) => o.address === r.address && Math.abs(o.lat - r.lat) < 1e-5)) out.push(r);
+    }
   }
+  if (full || !aq) return out;
+  // A block address: the matching block first; with no area given ("blk 298"), the nearest first
   const here = lat != null && lng != null ? { lat, lng } : null;
   const score = (r) => (r.blk === aq.blk ? 0 : 1) * 1e7 + (here && !aq.area ? metresApart(r, here) : 0);
   return out.map((r, i) => ({ r, i })).sort((x, y) => score(x.r) - score(y.r) || x.i - y.i).map((x) => x.r);
@@ -231,7 +282,7 @@ module.exports = async (req, res) => {
 
   const [placesResult, businessResult] = await Promise.allSettled([
     isPostalCode ? searchOneMap(q) : searchPlaces(q, lat, lng),
-    isPostalCode ? Promise.resolve([]) : searchPhoton(q, lat, lng)
+    isPostalCode ? Promise.resolve([]) : searchPhoton(expandAliases(q) || q, lat, lng)
   ]);
 
   if (placesResult.status === 'rejected' && businessResult.status === 'rejected') {
@@ -244,7 +295,9 @@ module.exports = async (req, res) => {
   // Keep full answers for a day; if a source failed, only briefly so it retries soon
   const allOk = placesResult.status === 'fulfilled' && businessResult.status === 'fulfilled';
   res.setHeader('Cache-Control', allOk ? 's-maxage=86400' : 's-maxage=60');
-  return res.status(200).json({ results: merge(places, businesses, !!addressQuery(q)) });
+  const full = expandAliases(q);
+  return res.status(200).json({ results: merge(places, businesses, !!addressQuery(q)), ...(full ? { searchedFor: full } : {}) });
 };
 
 module.exports.addressQuery = addressQuery;
+module.exports.expandAliases = expandAliases;
