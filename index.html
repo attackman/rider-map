@@ -738,11 +738,12 @@
       { id: 'incidents', label: 'Traffic incidents',  hint: 'Accidents, breakdowns and road works (LTA)', colour: '#ff3b30' },
       { id: 'moto',      label: 'Motorcycle parking', hint: 'Green numbers: free lots right now. Grey M: other motorcycle parking (no live count)', colour: '#248a3d' },
       { id: 'cars',      label: 'Car parking',        hint: 'Purple numbers: free lots right now. Grey P: other car parks, incl. private (no live count)', colour: '#5856d6' },
+      { id: 'bus',       label: 'Bus stops',          hint: 'Every bus stop with its 5-digit code (LTA). Big dots are bus interchanges', colour: '#00897b' },
       { id: 'toilet',    label: 'Toilets',            hint: 'Zoom in to see them', colour: '#a2845e' },
       { id: 'water',     label: 'Drinking water',     hint: 'Zoom in to see them', colour: '#32ade6' },
       { id: 'shelter',   label: 'Shelters',           hint: 'Bus stop and other shelters, to wait out the rain', colour: '#8e8e93' }
     ];
-    const FEED_FOR = { rain: 'weather', incidents: 'incidents', moto: 'carparks', cars: 'carparks',
+    const FEED_FOR = { rain: 'weather', incidents: 'incidents', moto: 'carparks', cars: 'carparks', bus: 'busstops',
                        toilet: null, water: null, shelter: null };   // these come straight from the map tiles
     // Map layer types for toilets, drinking water and shelters inside the map tiles (OpenStreetMap)
     const AMENITY_TYPE = { toilet: 'toilets', water: 'drinking_water', shelter: 'shelter' };
@@ -753,7 +754,8 @@
     const feeds = {
       weather:   { url: '/api/weather',             maxAge: 10 * 60 * 1000 },
       incidents: { url: '/api/lta?kind=incidents',  maxAge: 3 * 60 * 1000 },
-      carparks:  { url: '/api/lta?kind=carparks',   maxAge: 3 * 60 * 1000 }
+      carparks:  { url: '/api/lta?kind=carparks',   maxAge: 3 * 60 * 1000 },
+      busstops:  { url: '/api/lta?kind=busstops',   maxAge: 24 * 60 * 60 * 1000 }   // bus stops hardly change
     };
     for (const f of Object.values(feeds)) Object.assign(f, { data: null, at: 0, error: null, loading: null });
 
@@ -783,10 +785,10 @@
 
     const pointFeature = (lng, lat, props) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: props });
     const collection = (features) => ({ type: 'FeatureCollection', features });
-    const OVERLAY_SOURCES = ['ov-rain', 'ov-raining', 'ov-incidents', 'ov-moto', 'ov-cars', 'ov-community'];
+    const OVERLAY_SOURCES = ['ov-rain', 'ov-raining', 'ov-incidents', 'ov-moto', 'ov-cars', 'ov-bus', 'ov-community'];
 
     function overlayData(id) {
-      const w = feeds.weather.data, inc = feeds.incidents.data, cp = feeds.carparks.data;
+      const w = feeds.weather.data, inc = feeds.incidents.data, cp = feeds.carparks.data, bs = feeds.busstops.data;
       const lots = (vehicle, t) => collection(cp && cp.carparks ? cp.carparks.filter((c) => c.vehicle === vehicle)
         .map((c) => pointFeature(c.lng, c.lat, { t, name: c.name, lots: c.lots, agency: c.agency })) : []);
       switch (id) {
@@ -798,6 +800,8 @@
           .map((i) => pointFeature(i.lng, i.lat, { t: 'incident', type: i.type, message: i.message })) : []);
         case 'ov-moto': return lots('motorcycle', 'moto');
         case 'ov-cars': return lots('car', 'car');
+        case 'ov-bus': return collection(bs && bs.busstops ? bs.busstops
+          .map((b) => pointFeature(b.lng, b.lat, { t: 'bus', code: b.code, name: b.name, road: b.road, int: b.int })) : []);
         case 'ov-community': return collection(community.missing
           .map((m) => pointFeature(m.lng, m.lat, { t: 'community', name: m.name, category: m.category || '', note: m.note || '' })));
       }
@@ -808,9 +812,10 @@
       rain: ['ov-rain-area', 'ov-rain-name', 'ov-raining-dot', 'ov-raining-mm'],
       incidents: ['ov-incidents-dot', 'ov-incidents-name'],
       moto: ['ov-moto-dot', 'ov-moto-num'],
-      cars: ['ov-cars-dot', 'ov-cars-num']
+      cars: ['ov-cars-dot', 'ov-cars-num'],
+      bus: ['ov-bus-dot', 'ov-bus-letter', 'ov-bus-name']
     };
-    const OVERLAY_TAP = ['ov-community-dot', 'ov-incidents-dot', 'ov-moto-dot', 'ov-cars-dot', 'ov-osm-parking', 'ov-amen-dot', 'ov-raining-dot', 'ov-rain-area'];
+    const OVERLAY_TAP = ['ov-community-dot', 'ov-incidents-dot', 'ov-moto-dot', 'ov-cars-dot', 'ov-bus-dot', 'ov-osm-parking', 'ov-amen-dot', 'ov-raining-dot', 'ov-rain-area'];
     const RAIN_COLOUR = ['case', ['in', 'Thunder', ['get', 'forecast']], '#af52de',
                          ['in', 'Shower', ['get', 'forecast']], '#007aff', '#5ac8fa'];
 
@@ -853,6 +858,24 @@
         layout: { 'text-field': ['match', SUB, 'motorcycle_parking', 'M', 'P'], 'text-font': font, 'text-size': 11,
                   'text-allow-overlap': true, 'text-ignore-placement': true },
         paint: { 'text-color': '#ffffff' } });
+
+      // Bus stops: a small teal dot with a B once zoomed in; interchanges bigger and from further out.
+      // Drawn under the parking numbers so free lots stay readable.
+      const INT = ['==', ['get', 'int'], 1];
+      map.addLayer({ id: 'ov-bus-dot', type: 'circle', source: 'ov-bus', minzoom: 12,
+        filter: ['any', INT, ['>=', ['zoom'], 15]], paint: {
+          'circle-radius': ['case', INT, ['interpolate', ['linear'], ['zoom'], 12, 7, 16, 12], ['interpolate', ['linear'], ['zoom'], 15, 6, 18, 9]],
+          'circle-color': '#00897b', 'circle-stroke-width': 1.8, 'circle-stroke-color': edge } });
+      map.addLayer({ id: 'ov-bus-letter', type: 'symbol', source: 'ov-bus', minzoom: 12,
+        filter: ['any', INT, ['>=', ['zoom'], 16]],
+        layout: { 'text-field': 'B', 'text-font': font, 'text-size': ['case', INT, 12, 10],
+                  'text-allow-overlap': true, 'text-ignore-placement': true },
+        paint: { 'text-color': '#ffffff' } });
+      map.addLayer({ id: 'ov-bus-name', type: 'symbol', source: 'ov-bus', minzoom: 13,
+        filter: ['any', INT, ['>=', ['zoom'], 17]],
+        layout: { 'text-field': ['get', 'name'], 'text-font': font, 'text-size': ['case', INT, 13, 11.5],
+                  'text-anchor': 'top', 'text-offset': [0, 1], 'text-max-width': 8, 'text-optional': true },
+        paint: labelPaint });
 
       // Parking: a numbered dot per car park (motorcycles on the left, cars on the right)
       for (const [src, colour, shift] of [['ov-moto', '#248a3d', -12], ['ov-cars', '#5856d6', 12]]) {
@@ -960,6 +983,7 @@
         case 'incident': return { name: p.type, address: p.message, noRecent: true };
         case 'moto': return { name: niceName(p.name), address: lotWords(p.lots, 'motorcycle'), noRecent: true };
         case 'car': return { name: niceName(p.name), address: lotWords(p.lots, 'car'), noRecent: true };
+        case 'bus': return busStopPlace(p);
         case 'toilet': return { name: p.name || 'Toilet', noRecent: true,
           address: ['Toilet', p.fee === 'yes' ? 'Paid' : p.fee === 'no' ? 'Free' : '', p.wheelchair ? 'Wheelchair accessible' : ''].filter(Boolean).join(' · ') };
         case 'water': return { name: p.name || 'Drinking water', address: 'Drinking water tap or fountain', noRecent: true };
@@ -969,6 +993,13 @@
         case 'rain': return { name: p.name, address: p.forecast + (p.until ? ' until ' + clockText(p.until) : ' in the next 2 hours'), info: true };
       }
       return null;
+    }
+
+    // A bus stop as a place: "Opp Blk 123" · Bus stop 84009 · Bedok Nth Rd
+    function busStopPlace(b) {
+      const interchange = Number(b.int) === 1;
+      return { name: b.name, address: (interchange ? 'Bus interchange ' : 'Bus stop ') + b.code + (b.road ? ' · ' + b.road : ''),
+               lat: b.lat, lng: b.lng, noRecent: true };   // not a shop, so no "Closed for good?" 
     }
 
     function clockText(iso) {
@@ -999,6 +1030,7 @@
         let d = Math.hypot(px.x - p.x, px.y - p.y);
         if (f.layer && f.layer.id === 'ov-rain-area') d += 1000; // big rain circles lose to anything closer
         if (f.layer && f.layer.id === 'ov-osm-parking') d += 8;   // live lot counts win over plain car park markers
+        if (f.layer && f.layer.id === 'ov-bus-dot') d += 6;       // parking counts win over a bus stop at the same spot
         if (d < bestDistance) { bestDistance = d; best = Object.assign(place, { lng: c[0], lat: c[1] }); }
       }
       if (best) choose(best);
@@ -1553,17 +1585,28 @@
       list.appendChild(add);
     }
 
+    // A 5-digit number is a bus stop code (customers sometimes say "drop at bus stop 84009")
+    async function busStopMatches(q) {
+      if (!/^\d{5}$/.test(q)) return [];
+      try {
+        const data = await loadFeed('busstops');
+        const b = data && data.busstops && data.busstops.find((s) => s.code === q);
+        return b ? [busStopPlace(b)] : [];
+      } catch (e) { return []; }
+    }
+
     async function search(q) {
       lastQuery = q;
       showMessage('Searching…');
       try {
         // Send the middle of the map so nearby shops come first
         const c = map.getCenter();
-        const data = await getJson('/api/search?q=' + encodeURIComponent(q)
-          + '&lat=' + c.lat.toFixed(2) + '&lng=' + c.lng.toFixed(2));
+        const [data, stops] = await Promise.all([
+          getJson('/api/search?q=' + encodeURIComponent(q) + '&lat=' + c.lat.toFixed(2) + '&lng=' + c.lng.toFixed(2)),
+          busStopMatches(q)]);
         if (q !== lastQuery) return;
         // OneMap names come in capitals; show them in normal case, like the rest of the app
-        showResults([...communityMatches(q), ...(data.results || []).map((r) => r.category ? r
+        showResults([...stops, ...communityMatches(q), ...(data.results || []).map((r) => r.category ? r
           : { ...r, name: niceName(r.name), address: niceName(r.address) })], q, data.searchedFor);
         track('search');
       } catch (e) {
@@ -2833,7 +2876,7 @@
     }
 
     // ---------- anonymous usage counts (no user, device or location) ----------
-    const APP_VERSION = '2026.11.04';
+    const APP_VERSION = '2026.11.05';
     const lastTracked = {};
     function track(name) {
       if (!/^[a-z_:]{2,40}$/.test(name)) return;

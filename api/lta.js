@@ -1,6 +1,7 @@
 // Vercel serverless function:
 //   /api/lta?kind=incidents   accidents, breakdowns, road works, road blocks...
 //   /api/lta?kind=carparks    live free lots at HDB, URA and LTA car parks (cars and motorcycles)
+//   /api/lta?kind=busstops    every bus stop: 5-digit code, name ("Opp Blk 123"), road, location
 // Uses LTA DataMall with the free key stored in Vercel as LTA_ACCOUNT_KEY.
 
 const BASE = 'https://datamall2.mytransport.sg/ltaodataservice/';
@@ -72,6 +73,24 @@ function readCarparks(rows) {
   return out;
 }
 
+// Bus interchanges and terminals ("Bedok Int", "Changi Village Ter") get a bigger dot on the map
+function isInterchange(name) {
+  return /\b(int|interchange|ter|terminal)$/i.test(name);        // at the end, so "Opp Int'l Business Pk" isn't one
+}
+
+function readBusStops(rows) {
+  const out = [];
+  for (const r of rows) {
+    const lat = Number(r.Latitude), lng = Number(r.Longitude);
+    const code = String(r.BusStopCode || '').trim();
+    if (!/^\d{5}$/.test(code) || !inSingapore(lat, lng)) continue;
+    const name = String(r.Description || '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Bus stop';
+    out.push({ code, name, road: String(r.RoadName || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+               int: isInterchange(name) ? 1 : 0, lat: Number(lat.toFixed(5)), lng: Number(lng.toFixed(5)) });
+  }
+  return out;
+}
+
 module.exports = async (req, res) => {
   const kind = (req.query && req.query.kind) || '';
   // Ignore stray spaces, line breaks or quotes picked up when the key was pasted
@@ -85,14 +104,21 @@ module.exports = async (req, res) => {
       res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300');
       return res.status(200).json({ incidents: readIncidents(rows) });
     }
+    if (kind === 'busstops') {
+      const rows = await fetchAll('BusStops', key, 14);           // about 5,200 stops, 500 a page
+      // Bus stops hardly change: keep a copy for a day, and keep serving it for a week if LTA is down
+      res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=604800');
+      return res.status(200).json({ busstops: readBusStops(rows) });
+    }
     if (kind === 'carparks') {
       const rows = await fetchAll('CarParkAvailabilityv2', key, 12);
       res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300');
       return res.status(200).json({ carparks: readCarparks(rows) });
     }
-    return res.status(400).json({ error: 'Ask for kind=incidents or kind=carparks' });
+    return res.status(400).json({ error: 'Ask for kind=incidents, kind=carparks or kind=busstops' });
   } catch (err) {
     console.error('lta error', err && err.message);   // details stay in the Vercel logs
     return res.status(err.status || 500).json({ error: err.name === 'AbortError' ? 'LTA took too long to answer' : 'Live data is not available right now. Please try again.' });
   }
 };
+module.exports.readBusStops = readBusStops;
