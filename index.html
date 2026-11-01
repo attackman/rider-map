@@ -200,6 +200,14 @@
       border: 0; background: transparent; color: var(--muted);
       width: 44px; height: 44px; font-size: 24px; font-weight: 300; cursor: pointer;
     }
+    /* Live bus arrivals on a bus stop's card */
+    .bus-arrivals { margin: 8px 0 4px; }
+    .bus-note { font-size: 14px; color: var(--muted); }
+    .bus-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 132px; overflow-y: auto; }
+    .bus-item { display: inline-flex; align-items: baseline; gap: 6px; padding: 5px 9px; border-radius: 10px; background: var(--chip); }
+    .bus-no { font-weight: 700; font-size: 15px; color: #00897b; }
+    :root[data-theme="dark"] .bus-no { color: #4cc3b4; }
+    .bus-time { font-size: 13.5px; color: var(--text); white-space: nowrap; }
     .install-steps { flex-basis: 100%; margin: 2px 0 4px; padding-left: 22px; font-size: 15px; line-height: 1.5; }
 
     /* Rain and heat alerts: like iOS notification banners */
@@ -1006,7 +1014,7 @@
     function busStopPlace(b) {
       const interchange = Number(b.int) === 1;
       return { name: b.name, address: (interchange ? 'Bus interchange ' : 'Bus stop ') + b.code + (b.road ? ' · ' + b.road : ''),
-               lat: b.lat, lng: b.lng, noRecent: true };   // not a shop, so no "Closed for good?" 
+               lat: b.lat, lng: b.lng, noRecent: true, busCode: b.code };   // not a shop, so no "Closed for good?" 
     }
 
     function clockText(iso) {
@@ -1707,6 +1715,7 @@
       close.setAttribute('aria-label', 'Close');
       close.addEventListener('click', closePlaceCard);
       const parts = [close, el('div', 'place place-head', r.name), el('div', 'sub place-head', r.address)];
+      if (r.busCode) parts.push(busArrivalsBox(r));
       const closedCount = closedReports(r);
       if (closedCount) parts.push(el('div', 'warn', '⚠ Reported closed for good by ' + closedCount + (closedCount === 1 ? ' rider' : ' riders')));
       parts.push(row);
@@ -1728,6 +1737,38 @@
       }
       if (links.childElementCount) parts.push(links);
       showCard(parts);
+    }
+
+    // Live bus arrivals on a bus stop's card: each service with its next 2 buses, refreshed every 30 s
+    // while the card is open. "Arr" = arriving now.
+    function busArrivalsBox(place) {
+      const box = el('div', 'bus-arrivals');
+      box.append(el('div', 'bus-note', 'Checking buses\u2026'));
+      const mins = (iso) => { const m = Math.round((Date.parse(iso) - Date.now()) / 60000); return m <= 0 ? 'Arr' : m + ' min'; };
+      let timer = null;
+      async function load() {
+        if (!box.isConnected && timer) { clearInterval(timer); return; }
+        try {
+          const data = await getJson('/api/lta?kind=arrival&stop=' + place.busCode);
+          box.innerHTML = '';
+          const running = (data.services || []).filter((s) => s.next.length);
+          if (!running.length) { box.append(el('div', 'bus-note', 'No buses running now')); return; }
+          const list = el('div', 'bus-list');
+          for (const s of running) {
+            const item = el('div', 'bus-item');
+            item.append(el('span', 'bus-no', s.no), el('span', 'bus-time', s.next.slice(0, 2).map((b) => mins(b.at)).join(', ')));
+            list.append(item);
+          }
+          box.append(list);
+        } catch (e) {
+          box.innerHTML = '';
+          box.append(el('div', 'bus-note', 'Bus times aren\u2019t available right now'));
+        }
+      }
+      load();
+      track('bus_arrival');
+      timer = setInterval(() => { if (!box.isConnected) { clearInterval(timer); return; } load(); }, 30000);
+      return box;
     }
 
     function closePlaceCard() {
@@ -2883,7 +2924,7 @@
     }
 
     // ---------- anonymous usage counts (no user, device or location) ----------
-    const APP_VERSION = '2026.11.06';
+    const APP_VERSION = '2026.11.07';
     const lastTracked = {};
     function track(name) {
       if (!/^[a-z_:]{2,40}$/.test(name)) return;

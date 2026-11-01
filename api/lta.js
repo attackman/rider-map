@@ -2,7 +2,10 @@
 //   /api/lta?kind=incidents   accidents, breakdowns, road works, road blocks...
 //   /api/lta?kind=carparks    live free lots at HDB, URA and LTA car parks (cars and motorcycles)
 //   /api/lta?kind=busstops    every bus stop: 5-digit code, name ("Opp Blk 123"), road, location
+//   /api/lta?kind=arrival&stop=84011   live arrival times of every bus service at one stop
 // Uses LTA DataMall with the free key stored in Vercel as LTA_ACCOUNT_KEY.
+
+const { quickLimit, tooMany } = require('./_security');
 
 const BASE = 'https://datamall2.mytransport.sg/ltaodataservice/';
 
@@ -94,6 +97,41 @@ function readBusStops(rows) {
   return out;
 }
 
+// One stop's live bus arrivals. LTA's current address first, the older one if that isn't there.
+async function fetchArrival(stop, key) {
+  for (const path of ['v3/BusArrival', 'BusArrivalv2']) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    let resp;
+    try {
+      resp = await fetch(BASE + path + '?BusStopCode=' + stop, { headers: { AccountKey: key, accept: 'application/json' }, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (resp.status === 404) continue;
+    if (resp.status === 401 || resp.status === 403) {
+      throw Object.assign(new Error('LTA rejected the key (status ' + resp.status + ')'), { status: 502 });
+    }
+    if (!resp.ok) throw Object.assign(new Error('LTA bus arrival failed (status ' + resp.status + ')'), { status: 502 });
+    return resp.json();
+  }
+  throw Object.assign(new Error('LTA bus arrival not found'), { status: 502 });
+}
+
+const LOADS = { SEA: 'seats', SDA: 'standing', LSD: 'full' };
+function readArrival(json) {
+  const services = (Array.isArray(json && json.Services) ? json.Services : []).map((s) => ({
+    no: String(s.ServiceNo || '').trim().slice(0, 6),
+    next: [s.NextBus, s.NextBus2, s.NextBus3]
+      .filter((b) => b && b.EstimatedArrival && !isNaN(Date.parse(b.EstimatedArrival)))
+      .map((b) => ({ at: String(b.EstimatedArrival), load: LOADS[b.Load] || null, live: Number(b.Monitored) === 1 }))
+  })).filter((s) => s.no);
+  // 2, 14, 14e, 25, 222, 228, then night and special services (NR7, CT8) at the end
+  const rank = (no) => /^\d/.test(no) ? parseInt(no, 10) : 100000;
+  services.sort((a, b) => rank(a.no) - rank(b.no) || a.no.localeCompare(b.no));
+  return services;
+}
+
 module.exports = async (req, res) => {
   const kind = (req.query && req.query.kind) || '';
   // Ignore stray spaces, line breaks or quotes picked up when the key was pasted
@@ -107,6 +145,14 @@ module.exports = async (req, res) => {
       res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300');
       return res.status(200).json({ incidents: readIncidents(rows) });
     }
+    if (kind === 'arrival') {
+      const stop = String((req.query && req.query.stop) || '');
+      if (!/^\d{5}$/.test(stop)) return res.status(400).json({ error: 'Bus stop code must be 5 digits' });
+      if (!quickLimit(req, 'arrival', 90, 60000)) return tooMany(res);
+      const services = readArrival(await fetchArrival(stop, key));
+      res.setHeader('Cache-Control', 's-maxage=20, stale-while-revalidate=20');   // LTA updates about every 20 s
+      return res.status(200).json({ stop, services });
+    }
     if (kind === 'busstops') {
       const rows = await fetchAll('BusStops', key, 14);           // about 5,200 stops, 500 a page
       // Bus stops hardly change: keep a copy for a day, and keep serving it for a week if LTA is down
@@ -118,10 +164,11 @@ module.exports = async (req, res) => {
       res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300');
       return res.status(200).json({ carparks: readCarparks(rows) });
     }
-    return res.status(400).json({ error: 'Ask for kind=incidents, kind=carparks or kind=busstops' });
+    return res.status(400).json({ error: 'Ask for kind=incidents, kind=carparks, kind=busstops or kind=arrival' });
   } catch (err) {
     console.error('lta error', err && err.message);   // details stay in the Vercel logs
     return res.status(err.status || 500).json({ error: err.name === 'AbortError' ? 'LTA took too long to answer' : 'Live data is not available right now. Please try again.' });
   }
 };
 module.exports.readBusStops = readBusStops;
+module.exports.readArrival = readArrival;
