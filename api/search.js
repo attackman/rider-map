@@ -81,7 +81,8 @@ const PLACE_ALIASES = {
   sgh: 'singapore general hospital', snec: 'singapore national eye centre', nuh: 'national university hospital',
   ttsh: 'tan tock seng hospital', cgh: 'changi general hospital', ktph: 'khoo teck puat hospital',
   kkh: "kk women's and children's hospital", skh: 'sengkang general hospital', skgh: 'sengkang general hospital',
-  ntfgh: 'ng teng fong general hospital', imh: 'institute of mental health', nccs: 'national cancer centre singapore',
+  ntfgh: 'ng teng fong general hospital', imh: 'institute of mental health', nccs: 'national cancer centre singapore', ncc: 'national cancer centre singapore',
+  ncid: 'national centre for infectious diseases',
   nhcs: 'national heart centre singapore', ndcs: 'national dental centre singapore', nni: 'national neuroscience institute',
   jch: 'jurong community hospital', ych: 'yishun community hospital', ojch: 'outram community hospital',
   // universities, polytechnics, schools
