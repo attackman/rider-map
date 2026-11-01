@@ -138,6 +138,8 @@
       font-size: 22px; line-height: 1; cursor: pointer;
     }
     #clear { color: var(--muted); font-size: 24px; font-weight: 300; }
+    #me.on { background: var(--accent); color: #ffffff; }   /* following you */
+    #me.on svg path { fill: #ffffff; }
     .icon-btn svg { width: 22px; height: 22px; display: block; margin: auto; }
 
     /* Search results, saved and recent places: an iOS inset list */
@@ -1605,6 +1607,7 @@
       if (!r.noRecent) remember(r);
       if (pickedMarker) pickedMarker.remove();
       pickedMarker = new maplibregl.Marker({ color: '#007aff' }).setLngLat([r.lng, r.lat]).addTo(map);
+      setFollowMe(false);
       map.flyTo({ center: [r.lng, r.lat], zoom: Math.max(map.getZoom(), 16) });
 
       // One big "Go here": routes straight from where you are. "Start from here" is a small link.
@@ -1892,7 +1895,30 @@
       centredOnMe = true;
       if (userMovedMap || riding || picked || start || end || !card.hidden) return;
       map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15.5) });
+      setFollowMe(true);
     }
+
+    // ---------- "Follow me" outside a ride: the map keeps you in view as you walk or ride ----------
+    // On after the app finds you or you tap the location button (shown solid blue);
+    // off as soon as you drag the map to look around.
+    let followMe = false;
+    let followAnchor = null;   // where you were when a route was shown (moving away from it = you're on the way)
+    function setFollowMe(on) {
+      followMe = on;
+      meBtn.classList.toggle('on', on);
+      meBtn.setAttribute('aria-pressed', String(on));
+    }
+    function followIdle(lng, lat) {
+      if (riding) return;
+      // Looking at a route but already on the way: start following
+      if (!followMe && lastRoute && followAnchor && metresBetween([lng, lat], followAnchor) > 30) {
+        followAnchor = null;
+        setFollowMe(true);
+      }
+      if (!followMe) return;
+      map.easeTo({ center: [lng, lat], duration: rideSettings.batterySaver ? 0 : 700 });
+    }
+    map.on('dragstart', (e) => { if (!riding && followMe && (!e || e.originalEvent)) setFollowMe(false); });
 
     // Any successful location: remember it, show the dot, keep it updated from now on
     function gotLocation(pos) {
@@ -1912,7 +1938,11 @@
         if (!inSingapore(c.latitude, c.longitude)) return;
         markLocationOK();
         noteKnown(c);
-        if (!riding) { placeMe([c.longitude, c.latitude]); centreOnMeOnce(c.longitude, c.latitude); }
+        if (!riding) {
+          placeMe([c.longitude, c.latitude]);
+          centreOnMeOnce(c.longitude, c.latitude);
+          followIdle(c.longitude, c.latitude);
+        }
       }, (err) => {
         // Location switched off for this site: stop asking until the rider allows it again
         if (err && err.code === 1) {
@@ -1984,6 +2014,7 @@
       track('show_me');
       if (lastKnown && Date.now() - lastKnown.time < 60000) {
         map.flyTo({ center: [lastKnown.lng, lastKnown.lat], zoom: Math.max(map.getZoom(), 16) });
+        setFollowMe(true);
         return;
       }
       if (!('geolocation' in navigator)) { showToast('This browser cannot share your location'); return; }
@@ -1993,6 +2024,7 @@
         if (!inSingapore(c.latitude, c.longitude)) { showToast('You seem to be outside Singapore'); return; }
         gotLocation(pos);
         map.flyTo({ center: [c.longitude, c.latitude], zoom: Math.max(map.getZoom(), 16) });
+        setFollowMe(true);
       }, (err) => {
         showToast(err.code === 1 ? 'Location is blocked. Allow it in your browser settings.' : 'Could not find your location');
       }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
@@ -2200,6 +2232,8 @@
           (b, c) => b.extend(c), new maplibregl.LngLatBounds(data.coordinates[0], data.coordinates[0]));
         const topSpace = document.querySelector('.search').offsetHeight + 30;
         map.fitBounds(bounds, { padding: { top: topSpace, bottom: 340, left: 40, right: 60 }, maxZoom: 17 });
+        setFollowMe(false);
+        followAnchor = lastKnown ? [lastKnown.lng, lastKnown.lat] : null;   // start following once you move off
 
         const summary = el('div', 'summary');
         summary.append(
@@ -2482,6 +2516,7 @@
       lastHeavy = 0;
       lastAutoZoom = null;
       stopIdleWatch();                          // the ride's own location updates take over
+      followAnchor = null;
       rideStartedAt = Date.now();
       document.body.classList.add('riding');
       if (meEl()) meEl().classList.add('riding');
@@ -2508,7 +2543,7 @@
       turnBox.innerHTML = '';
       // Keep the blue dot (now with the facing cone) and go back to watching quietly
       if (meEl()) { meEl().classList.remove('riding'); updateArrow(); }
-      if (wasRiding && locationAllowed) startIdleWatch();
+      if (wasRiding && locationAllowed) { startIdleWatch(); setFollowMe(true); }
       updateTop();
       // Back to north-up after a ride with "Map turns with me"
       if (typeof map.getBearing === 'function' && map.getBearing() !== 0) map.easeTo({ bearing: 0, duration: 400 });
@@ -2692,11 +2727,19 @@
     }
 
     // Stop following when the rider drags the map; "Re-centre" brings it back
+    let recentreTimer = null;
     map.on('dragstart', () => {
+      clearTimeout(recentreTimer);
       if (riding && following) { following = false; showRideCard(); }
+    });
+    // ...and goes back to following you 10 seconds after you let go, so you don't have to tap Re-centre
+    map.on('dragend', () => {
+      clearTimeout(recentreTimer);
+      if (riding && !following) recentreTimer = setTimeout(() => { if (riding && !following) recentre(); }, 10000);
     });
 
     function recentre() {
+      clearTimeout(recentreTimer);
       following = true;
       if (lastFix) map.easeTo(Object.assign(followView([lastFix.lng, lastFix.lat], lastFix.heading, lastFix.speedKmh), { duration: 600 }));
       showRideCard();
