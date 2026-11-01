@@ -58,13 +58,77 @@ async function searchOneMap(query) {
   }
   if (!resp.ok) throw new Error('OneMap search failed (status ' + resp.status + ')');
   const data = await resp.json();
-  return (data.results || []).map((r) => ({
-    name: r.SEARCHVAL,
-    address: r.ADDRESS,
-    category: null,
-    lat: Number(r.LATITUDE),
-    lng: Number(r.LONGITUDE)
-  })).filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+  return (data.results || []).map((r) => {
+    // An HDB block or other building with no name: call it "BLK 298 TAMPINES STREET 22"
+    const blk = String(r.BLK_NO || '').trim();
+    const unnamed = !r.BUILDING || r.BUILDING === 'NIL' || r.SEARCHVAL === r.ADDRESS;
+    const road = String(r.ROAD_NAME || '').trim();
+    return {
+      name: blk && road && unnamed ? 'BLK ' + blk + ' ' + road : r.SEARCHVAL,
+      address: r.ADDRESS,
+      category: null,
+      blk: blk.toUpperCase(),
+      lat: Number(r.LATITUDE),
+      lng: Number(r.LONGITUDE)
+    };
+  }).filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+}
+
+// ---------- understanding how riders type addresses ----------
+// "Tampines Blk 298", "blk 298 tampines", "Tampines 298", "298 tampines st 22 #05-123"
+// all mean block 298 in Tampines. OneMap understands "298 TAMPINES STREET 22", so rewrite to that.
+const ROAD_WORDS = {
+  st: 'street', street: 'street', ave: 'avenue', avenue: 'avenue', rd: 'road', road: 'road', dr: 'drive', drive: 'drive',
+  cres: 'crescent', crescent: 'crescent', ctrl: 'central', central: 'central', nth: 'north', north: 'north',
+  sth: 'south', south: 'south', east: 'east', west: 'west', jln: 'jalan', jalan: 'jalan', lor: 'lorong', lorong: 'lorong',
+  bt: 'bukit', upp: 'upper', lwr: 'lower', pl: 'place', place: 'place', cl: 'close', close: 'close', ln: 'lane', lane: 'lane',
+  lk: 'link', link: 'link', walk: 'walk', way: 'way', ter: 'terrace', terrace: 'terrace', vw: 'view', view: 'view',
+  rise: 'rise', ring: 'ring', hts: 'heights', heights: 'heights', pk: 'park', sq: 'square', tg: 'tanjong', kg: 'kampong'
+};
+// a number straight after one of these is a street number ("street 22"), not a block
+const NUMBERED_ROADS = new Set(['st', 'street', 'ave', 'avenue', 'rd', 'road', 'dr', 'drive', 'cres', 'crescent', 'ctrl', 'central',
+  'lor', 'lorong', 'north', 'nth', 'south', 'sth', 'east', 'west', 'link', 'lk', 'close', 'cl', 'lane', 'ln', 'way', 'walk',
+  'place', 'pl', 'ring', 'view', 'terrace', 'ter', 'sector', 'level', 'lvl', 'floor', 'unit', 'no']);
+
+function addressQuery(q) {
+  let s = ' ' + String(q).toLowerCase() + ' ';
+  s = s.replace(/#\s*[a-z]?\d{1,3}\s*-\s*\d{1,5}[a-z]?/g, ' ')   // unit numbers like #05-123
+       .replace(/\bsingapore\b|\bs\(\d{6}\)/g, ' ')
+       .replace(/[,.()]/g, ' ');
+  let blk = null;
+  const named = s.match(/\b(?:blk|block|bk|blok)\s*(\d{1,4}[a-z]?)\b/);
+  if (named) {
+    blk = named[1];
+    s = s.replace(named[0], ' ');
+  }
+  let words = s.split(/\s+/).filter(Boolean);
+  if (!blk) {
+    const i = words.findIndex((w, k) => /^\d{1,4}[a-z]?$/.test(w) && !(k > 0 && NUMBERED_ROADS.has(words[k - 1])));
+    if (i < 0 || words.length < 2) return null;
+    blk = words[i];
+    words.splice(i, 1);
+  }
+  words = words.filter((w) => !['blk', 'block', 'bk', 'hdb', 'flat'].includes(w)).map((w) => ROAD_WORDS[w] || w);
+  return { blk: blk.toUpperCase(), area: words.join(' '), query: (blk + ' ' + words.join(' ')).trim() };
+}
+
+// Ask OneMap the rider's words and the rewritten address; matching blocks first,
+// and with no area given ("blk 298"), the nearest ones first
+async function searchPlaces(q, lat, lng) {
+  const aq = addressQuery(q);
+  if (!aq || aq.query === q.toLowerCase().trim()) return searchOneMap(q);
+  const [asAddress, asTyped] = await Promise.allSettled([searchOneMap(aq.query), searchOneMap(q)]);
+  if (asAddress.status === 'rejected' && asTyped.status === 'rejected') throw asAddress.reason;
+  const a = asAddress.status === 'fulfilled' ? asAddress.value : [];
+  const t = asTyped.status === 'fulfilled' ? asTyped.value : [];
+  const out = [];
+  for (const r of [...a, ...t]) {
+    if (out.some((o) => o.address === r.address && Math.abs(o.lat - r.lat) < 1e-5)) continue;
+    out.push(r);
+  }
+  const here = lat != null && lng != null ? { lat, lng } : null;
+  const score = (r) => (r.blk === aq.blk ? 0 : 1) * 1e7 + (here && !aq.area ? metresApart(r, here) : 0);
+  return out.map((r, i) => ({ r, i })).sort((x, y) => score(x.r) - score(y.r) || x.i - y.i).map((x) => x.r);
 }
 
 // ---------- 2. Photon: shops, food and businesses ----------
@@ -138,15 +202,16 @@ function samePlace(a, b) {
   return metresApart(a, b) < 80 && x && y && (x.includes(y) || y.includes(x));
 }
 
-function merge(places, businesses) {
+function merge(places, businesses, looksLikeAddress) {
   const uniqueBusinesses = [];
   for (const b of businesses) {
     if (places.some((p) => samePlace(p, b))) continue;
     if (uniqueBusinesses.some((u) => samePlace(u, b))) continue;
     uniqueBusinesses.push(b);
   }
-  const placeCount = uniqueBusinesses.length ? 4 : 8;
-  return [...places.slice(0, placeCount), ...uniqueBusinesses.slice(0, 6)].slice(0, 10);
+  const placeCount = uniqueBusinesses.length ? (looksLikeAddress ? 6 : 4) : 8;
+  return [...places.slice(0, placeCount), ...uniqueBusinesses.slice(0, looksLikeAddress ? 3 : 6)].slice(0, 10)
+    .map(({ blk, ...r }) => r);
 }
 
 function readCoord(value, min, max) {
@@ -165,7 +230,7 @@ module.exports = async (req, res) => {
   const isPostalCode = /^\d{6}$/.test(q);
 
   const [placesResult, businessResult] = await Promise.allSettled([
-    searchOneMap(q),
+    isPostalCode ? searchOneMap(q) : searchPlaces(q, lat, lng),
     isPostalCode ? Promise.resolve([]) : searchPhoton(q, lat, lng)
   ]);
 
@@ -179,5 +244,7 @@ module.exports = async (req, res) => {
   // Keep full answers for a day; if a source failed, only briefly so it retries soon
   const allOk = placesResult.status === 'fulfilled' && businessResult.status === 'fulfilled';
   res.setHeader('Cache-Control', allOk ? 's-maxage=86400' : 's-maxage=60');
-  return res.status(200).json({ results: merge(places, businesses) });
+  return res.status(200).json({ results: merge(places, businesses, !!addressQuery(q)) });
 };
+
+module.exports.addressQuery = addressQuery;
