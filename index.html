@@ -1745,14 +1745,16 @@
       const box = el('div', 'bus-arrivals');
       box.append(el('div', 'bus-note', 'Checking buses\u2026'));
       const mins = (iso) => { const m = Math.round((Date.parse(iso) - Date.now()) / 60000); return m <= 0 ? 'Arr' : m + ' min'; };
+      const upcoming = (s) => s.next.filter((b) => Date.parse(b.at) > Date.now() - 60000);
       let timer = null;
       async function load() {
         if (!box.isConnected && timer) { clearInterval(timer); return; }
         try {
           const data = await getJson('/api/lta?kind=arrival&stop=' + place.busCode);
           box.innerHTML = '';
-          const running = (data.services || []).filter((s) => s.next.length);
-          if (!running.length) { box.append(el('div', 'bus-note', 'No buses running now')); return; }
+          const running = (data.services || []).map((s) => ({ no: s.no, next: upcoming(s) })).filter((s) => s.next.length);
+          if (!running.length) { box.append(el('div', 'bus-note', busNightTime() ? 'No buses running now'
+            : 'Live bus times aren\u2019t available right now. Try again in a few minutes.')); return; }
           const list = el('div', 'bus-list');
           for (const s of running) {
             const item = el('div', 'bus-item');
@@ -1769,6 +1771,12 @@
       track('bus_arrival');
       timer = setInterval(() => { if (!box.isConnected) { clearInterval(timer); return; } load(); }, 30000);
       return box;
+    }
+
+    // Between about 12:30 am and 5:30 am Singapore time most buses have stopped for the night
+    function busNightTime() {
+      const d = new Date(Date.now() + 8 * 3600 * 1000), m = d.getUTCHours() * 60 + d.getUTCMinutes();
+      return m >= 30 && m < 330;
     }
 
     function closePlaceCard() {
@@ -2924,7 +2932,7 @@
     }
 
     // ---------- anonymous usage counts (no user, device or location) ----------
-    const APP_VERSION = '2026.11.07';
+    const APP_VERSION = '2026.11.08';
     const lastTracked = {};
     function track(name) {
       if (!/^[a-z_:]{2,40}$/.test(name)) return;

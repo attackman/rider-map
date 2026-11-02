@@ -121,11 +121,13 @@ async function fetchArrival(stop, key) {
 }
 
 const LOADS = { SEA: 'seats', SDA: 'standing', LSD: 'full' };
-function readArrival(json) {
+// Buses whose time is more than a minute ago have left. LTA sometimes sends stale times
+// when its live feed has a problem, so those are dropped rather than shown as "Arr".
+function readArrival(json, now = Date.now()) {
   const services = (Array.isArray(json && json.Services) ? json.Services : []).map((s) => ({
     no: String(s.ServiceNo || '').trim().slice(0, 6),
     next: [s.NextBus, s.NextBus2, s.NextBus3]
-      .filter((b) => b && b.EstimatedArrival && !isNaN(Date.parse(b.EstimatedArrival)))
+      .filter((b) => b && b.EstimatedArrival && Date.parse(b.EstimatedArrival) > now - 60000)
       .map((b) => ({ at: String(b.EstimatedArrival), load: LOADS[b.Load] || null, live: Number(b.Monitored) === 1 }))
   })).filter((s) => s.no);
   // 2, 14, 14e, 25, 222, 228, then night and special services (NR7, CT8) at the end

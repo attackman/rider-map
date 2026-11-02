@@ -114,8 +114,10 @@ export function busText(stops, arrival, here, pick, now) {
   if (!arrival || arrival.stop !== stop.code) {
     body.push('Checking buses...');
   } else {
-    const running = (arrival.services || []).filter((s) => s.next && s.next.length);
-    if (!running.length) body.push('No buses running now');
+    const running = (arrival.services || [])
+      .map((s) => ({ no: s.no, next: (s.next || []).filter((b) => Date.parse(b.at) > now - 60000) }))
+      .filter((s) => s.next.length);
+    if (!running.length) body.push(nightTime(now) ? 'No buses running now' : 'Bus times not available', ...(nightTime(now) ? [] : ['right now. Try again soon.']));
     const parts = running.map((s) => {
       const t = s.next.slice(0, 2).map((b) => minutesAway(b.at, now));
       return s.no + ': ' + t.join(', ') + (t[t.length - 1] === 'Arr' ? '' : ' min');
@@ -127,6 +129,12 @@ export function busText(stops, arrival, here, pick, now) {
   }
   const hint = near.length > 1 ? 'tap: next stop (' + ((pick % near.length) + 1) + '/' + near.length + ') · ▲▼' : SWIPE;
   return frame('bus', body, hint);
+}
+
+// About 12:30 am to 5:30 am Singapore time, when most buses have stopped
+export function nightTime(now) {
+  const d = new Date(now + 8 * 3600 * 1000), m = d.getUTCHours() * 60 + d.getUTCMinutes();
+  return m >= 30 && m < 330;
 }
 
 export function nearbyStops(stops, here) {
