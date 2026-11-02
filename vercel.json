@@ -51,5 +51,17 @@
         }
       ]
     }
+  ],
+  "redirects": [
+    {
+      "source": "/g2",
+      "destination": "https://g2.riderkaki.sg/",
+      "permanent": false
+    },
+    {
+      "source": "/g2/:path*",
+      "destination": "https://g2.riderkaki.sg/",
+      "permanent": false
+    }
   ]
 }
