@@ -1,0 +1,13 @@
+{
+  "package_id": "sg.riderkaki.g2",
+  "edition": "202601",
+  "name": "RiderKaki",
+  "version": "0.1.0",
+  "min_sdk_version": "0.0.12",
+  "entrypoint": "index.html",
+  "permissions": [
+    { "name": "location", "desc": "Shows rain, free motorbike lots and bus times near where you are." },
+    { "name": "network", "desc": "Reads live rain, parking and bus data from RiderKaki (riderkaki.sg).", "whitelist": ["https://riderkaki.sg"] }
+  ],
+  "supported_languages": ["en"]
+}

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+  <title>RiderKaki for G2</title>
+  <style>
+    :root { --text: #232323; --dim: #7b7b7b; --bg: #ffffff; --surface: #eeeeee; --accent: #0b5fff; }
+    @media (prefers-color-scheme: dark) { :root { --text: #ffffff; --dim: #8a8a8a; --bg: #111111; --surface: #1a1a1a; } }
+    html, body { margin: 0; background: var(--bg); color: var(--text);
+      font: 16px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; letter-spacing: -0.01em;
+      touch-action: manipulation; -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
+    main { padding: 20px; max-width: 520px; margin: 0 auto; }
+    h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; margin: 4px 0 2px; }
+    .sub { color: var(--dim); font-size: 13px; margin: 0 0 16px; }
+    #status { background: var(--surface); border-radius: 12px; padding: 12px 14px; font-size: 14px; margin-bottom: 16px; }
+    .label { font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dim); margin: 0 0 6px 2px; }
+    #mirror { background: #000; color: #e5e5e5; border-radius: 12px; padding: 14px 16px; min-height: 180px;
+      font: 15px/1.45 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; margin: 0 0 12px; }
+    .row { display: flex; gap: 8px; }
+    button { flex: 1; min-height: 48px; border: 0; border-radius: 12px; background: var(--surface); color: var(--text);
+      font: inherit; font-weight: 500; cursor: pointer; }
+    button.main { background: var(--accent); color: #fff; }
+    .help { color: var(--dim); font-size: 13px; margin-top: 18px; line-height: 1.5; }
+    .help b { color: var(--text); font-weight: 500; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>RiderKaki for G2</h1>
+    <p class="sub">Rain, free motorbike lots and bus times near you, on your glasses.</p>
+    <div id="status">Starting...</div>
+    <p class="label">On your glasses</p>
+    <pre id="mirror"></pre>
+    <div class="row">
+      <button id="prev" type="button" aria-label="Previous screen">◀ Back</button>
+      <button id="tap" type="button" class="main">Tap</button>
+      <button id="next" type="button" aria-label="Next screen">Next ▶</button>
+    </div>
+    <p class="help">
+      <b>On the glasses:</b> swipe to change screen (Rain, Parking, Bus) · tap to refresh, or on Bus, to see the next stop · double tap to close.<br>
+      Only glance at it when you have stopped. Data from NEA and LTA via riderkaki.sg.
+    </p>
+  </main>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

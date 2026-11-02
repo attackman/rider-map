@@ -1,0 +1,18 @@
+{
+  "name": "riderkaki-g2",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "vite build && (evenhub pack app.json dist -o riderkaki.ehpk && cp riderkaki.ehpk dist/ || echo 'Package step skipped')",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@evenrealities/even_hub_sdk": ">=0.0.12 <0.1.0"
+  },
+  "devDependencies": {
+    "@evenrealities/evenhub-cli": ">=0.1.11 <1.0.0",
+    "vite": "^5.4.0"
+  }
+}
