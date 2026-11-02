@@ -113,7 +113,9 @@ async function fetchArrival(stop, key) {
       throw Object.assign(new Error('LTA rejected the key (status ' + resp.status + ')'), { status: 502 });
     }
     if (!resp.ok) throw Object.assign(new Error('LTA bus arrival failed (status ' + resp.status + ')'), { status: 502 });
-    return resp.json();
+    const json = await resp.json();
+    json.__source = path;                    // which LTA address answered (shown in a response header)
+    return json;
   }
   throw Object.assign(new Error('LTA bus arrival not found'), { status: 502 });
 }
@@ -149,7 +151,10 @@ module.exports = async (req, res) => {
       const stop = String((req.query && req.query.stop) || '');
       if (!/^\d{5}$/.test(stop)) return res.status(400).json({ error: 'Bus stop code must be 5 digits' });
       if (!quickLimit(req, 'arrival', 90, 60000)) return tooMany(res);
-      const services = readArrival(await fetchArrival(stop, key));
+      const raw = await fetchArrival(stop, key);
+      const services = readArrival(raw);
+      res.setHeader('X-LTA-Source', raw.__source || '');
+      if (!services.some((s) => s.next.length)) console.warn('bus arrival: no times', stop, raw.__source, JSON.stringify(raw).slice(0, 300));
       res.setHeader('Cache-Control', 's-maxage=20, stale-while-revalidate=20');   // LTA updates about every 20 s
       return res.status(200).json({ stop, services });
     }
