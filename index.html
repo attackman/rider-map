@@ -200,6 +200,18 @@
       border: 0; background: transparent; color: var(--muted);
       width: 44px; height: 44px; font-size: 24px; font-weight: 300; cursor: pointer;
     }
+    /* Pickup tips on a place's card */
+    .tips { margin: 8px 0 4px; padding: 8px 4px 4px 12px; border-radius: 12px; background: var(--chip); }
+    .tips[hidden] { display: none; }
+    .tips-title { font-size: 12px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+    .tip { display: flex; align-items: flex-start; gap: 4px; }
+    .tip + .tip { border-top: 0.5px solid var(--line); }
+    .tip-text { flex: 1; font-size: 15px; line-height: 1.35; padding: 6px 0; color: var(--text); }
+    .tip-when { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+    .tip-flag { border: 0; background: transparent; color: var(--muted); min-width: 40px; min-height: 36px; font-size: 14px; cursor: pointer; }
+    .tip-flag.armed { color: var(--red); font-weight: 600; }
+    .tip-count { font-size: 12px; color: var(--muted); text-align: right; margin: -8px 4px 4px; }
+
     /* Live bus arrivals on a bus stop's card */
     .bus-arrivals { margin: 8px 0 4px; }
     .bus-note { font-size: 14px; color: var(--muted); }
@@ -1718,6 +1730,8 @@
       if (r.busCode) parts.push(busArrivalsBox(r));
       const closedCount = closedReports(r);
       if (closedCount) parts.push(el('div', 'warn', '⚠ Reported closed for good by ' + closedCount + (closedCount === 1 ? ' rider' : ' riders')));
+      const tips = r.name !== 'My location' ? tipsBox(r) : null;
+      if (tips) parts.push(tips);
       parts.push(row);
       const links = el('div', 'links');
       if (!riding) {
@@ -1725,6 +1739,12 @@
         startLink.type = 'button';
         startLink.addEventListener('click', () => setPoint('start', picked));
         links.append(startLink);
+      }
+      if (tips) {
+        const addTip = el('button', 'link-btn', '＋ Add a pickup tip');
+        addTip.type = 'button';
+        addTip.addEventListener('click', () => openTipForm(r, tips.redraw));
+        links.append(addTip);
       }
       if (!r.noRecent && r.name !== 'My location') {
         const report = el('button', 'link-btn', 'Closed for good?');
@@ -1737,6 +1757,95 @@
       }
       if (links.childElementCount) parts.push(links);
       showCard(parts);
+    }
+
+    // ---------- pickup tips: short notes riders leave on a place ("collect at the side counter") ----------
+    function tipsFor(place) {
+      if (!place || place.lat == null) return null;
+      return (community.tips || []).find((t) => sameName(t.name, place.name)
+        && metresBetween([t.lng, t.lat], [place.lng, place.lat]) < 80) || null;
+    }
+    function ago(iso) {
+      const days = Math.floor((Date.now() - Date.parse(iso)) / 86400000);
+      if (!(days >= 0)) return '';
+      if (days === 0) return 'today';
+      if (days === 1) return 'yesterday';
+      if (days < 14) return days + ' days ago';
+      if (days < 60) return Math.round(days / 7) + ' weeks ago';
+      return Math.round(days / 30) + ' months ago';
+    }
+    // The tips on a place's card (up to 3, newest first). Each has a small flag for wrong or rude ones.
+    function tipsBox(place) {
+      const box = el('div', 'tips');
+      box.redraw = () => {
+        box.innerHTML = '';
+        const group = tipsFor(place);
+        const shown = group ? group.tips.slice(0, 3) : [];
+        box.hidden = !shown.length;
+        if (!shown.length) return;
+        box.append(el('div', 'tips-title', 'Rider tips'));
+        for (const t of shown) {
+          const row = el('div', 'tip');
+          const words = el('div', 'tip-text');
+          words.append(document.createTextNode(t.text), el('span', 'tip-when', ' · ' + ago(t.at)));
+          const flag = el('button', 'tip-flag', '⚑');
+          flag.type = 'button';
+          flag.setAttribute('aria-label', 'Wrong or rude? Flag this tip');
+          flag.addEventListener('click', async () => {
+            if (!flag.classList.contains('armed')) { flag.classList.add('armed'); flag.textContent = 'Flag?'; return; }
+            flag.disabled = true;
+            try {
+              await postCommunity({ type: 'tipflag', id: t.id, name: place.name, lat: place.lat, lng: place.lng });
+              track('tip_flag');
+              showToast('Thanks. Tips flagged by riders are hidden.');
+              row.remove();
+            } catch (e) { flag.disabled = false; showToast(e.message); }
+          });
+          row.append(words);
+          if (t.id) row.append(flag);   // your own just-added tip has no id yet
+          box.append(row);
+        }
+      };
+      box.redraw();
+      return box;
+    }
+    function openTipForm(place, onDone) {
+      openPanel('tip', (panel) => {
+        panel.append(el('h2', null, 'Add a pickup tip'));
+        panel.append(el('p', 'sheet-note', 'For ' + place.name + '. Help the next rider find the pickup fast.'));
+        const box = el('textarea');
+        Object.assign(box, { maxLength: 120, placeholder: 'e.g. Riders collect at the side counter · Stall #01-23 · Wait at the B1 loading bay' });
+        const count = el('div', 'tip-count', '0 / 120');
+        const msg = el('div', 'form-msg');
+        box.addEventListener('input', () => { count.textContent = box.value.length + ' / 120'; msg.textContent = ''; });
+        const send = el('button', 'sheet-done', 'Share tip');
+        send.type = 'button';
+        send.addEventListener('click', async () => {
+          const text = box.value.trim();
+          if (text.length < 4) { msg.textContent = 'Please write a little more.'; return; }
+          send.disabled = true;
+          msg.textContent = 'Sending…';
+          try {
+            await postCommunity({ type: 'tip', name: place.name, note: text, lat: place.lat, lng: place.lng });
+            let group = tipsFor(place);
+            if (!group) { group = { name: place.name, lat: place.lat, lng: place.lng, tips: [] }; community.tips.push(group); }
+            group.tips.unshift({ id: 0, text: text.replace(/\s+/g, ' '), at: new Date().toISOString() });
+            track('tip_add');
+            closeSheet();
+            showToast('Thanks! Your tip is on this place for other riders.');
+            if (onDone) onDone();
+          } catch (e) {
+            send.disabled = false;
+            msg.textContent = e.message;
+          }
+        });
+        const cancel = el('button', 'sheet-cancel', 'Cancel');
+        cancel.type = 'button';
+        cancel.addEventListener('click', closeSheet);
+        panel.append(field('Your tip', box), count,
+          el('p', 'sheet-note', 'Shown to all riders. Please leave out phone numbers, links and names.'), msg, send, cancel);
+        setTimeout(() => box.focus(), 50);
+      });
     }
 
     // Live bus arrivals on a bus stop's card: each service with its next 2 buses, refreshed every 30 s
@@ -2932,7 +3041,7 @@
     }
 
     // ---------- anonymous usage counts (no user, device or location) ----------
-    const APP_VERSION = '2026.11.08';
+    const APP_VERSION = '2026.11.09';
     const lastTracked = {};
     function track(name) {
       if (!/^[a-z_:]{2,40}$/.test(name)) return;
@@ -3095,11 +3204,11 @@
     }
 
     // ---------- community: closed places and rider-added places ----------
-    let community = { closed: [], missing: [] };
+    let community = { closed: [], missing: [], tips: [] };
     async function loadCommunity() {
       try {
         const data = await getJson('/api/community');
-        community = { closed: data.closed || [], missing: data.missing || [] };
+        community = { closed: data.closed || [], missing: data.missing || [], tips: data.tips || [] };
         updateOverlays();
       } catch (e) { /* the app works without it */ }
     }

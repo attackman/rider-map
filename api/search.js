@@ -257,15 +257,46 @@ function simple(name) {
   return String(name).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+// Words of a name, for comparing: "51 OLD AIRPORT ROAD FOOD CENTRE AND SHOPPING MALL" and
+// "Old Airport Road Food Centre & Shopping Mall" share all their words.
+const NAME_STOP = new Set(['and', 'the', 'of', 'at', 'singapore', 'sg']);
+function nameWords(name) {
+  const all = String(name || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9#]+/g, ' ').trim().split(' ').filter(Boolean);
+  return {
+    words: new Set(all.filter((w) => !NAME_STOP.has(w) && !/\d/.test(w))),
+    numbers: new Set(all.filter((w) => /\d/.test(w)))
+  };
+}
+
+// Same place: within 80 m and the names match. Numbers must agree when both names have them,
+// so Blk 297 and Blk 298 next door stay separate.
 function samePlace(a, b) {
+  if (!(metresApart(a, b) < 80)) return false;
   const x = simple(a.name), y = simple(b.name);
-  return metresApart(a, b) < 80 && x && y && (x.includes(y) || y.includes(x));
+  if (x && y && (x.includes(y) || y.includes(x))) return true;
+  const A = nameWords(a.name), B = nameWords(b.name);
+  if (A.numbers.size && B.numbers.size) {
+    const [fewer, more] = A.numbers.size <= B.numbers.size ? [A.numbers, B.numbers] : [B.numbers, A.numbers];
+    if (![...fewer].every((n) => more.has(n))) return false;
+  }
+  const [small, big] = A.words.size <= B.words.size ? [A.words, B.words] : [B.words, A.words];
+  if (small.size < 2) return false;
+  const shared = [...small].filter((w) => big.has(w)).length;
+  return shared === small.size || shared / new Set([...small, ...big]).size >= 0.75;
+}
+
+// One place found by both sources: keep it once, with the nicer name and the shop category
+function mergeInto(place, business) {
+  if (business.category && !place.category) place.category = business.category;
+  if (place.name === place.name.toUpperCase()) place.name = business.name;
+  if (!/\b\d{6}\b/.test(place.address || '') && /\b\d{6}\b/.test(business.address || '')) place.address = business.address;
 }
 
 function merge(places, businesses, looksLikeAddress) {
   const uniqueBusinesses = [];
   for (const b of businesses) {
-    if (places.some((p) => samePlace(p, b))) continue;
+    const twin = places.find((p) => samePlace(p, b));
+    if (twin) { mergeInto(twin, b); continue; }
     if (uniqueBusinesses.some((u) => samePlace(u, b))) continue;
     uniqueBusinesses.push(b);
   }
@@ -312,3 +343,5 @@ module.exports = async (req, res) => {
 
 module.exports.addressQuery = addressQuery;
 module.exports.expandAliases = expandAliases;
+module.exports.merge = merge;
+module.exports.samePlace = samePlace;
