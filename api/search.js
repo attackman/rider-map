@@ -289,7 +289,12 @@ function samePlace(a, b) {
 function mergeInto(place, business) {
   if (business.category && !place.category) place.category = business.category;
   if (place.name === place.name.toUpperCase()) place.name = business.name;
-  if (!/\b\d{6}\b/.test(place.address || '') && /\b\d{6}\b/.test(business.address || '')) place.address = business.address;
+  // OneMap's capitals address repeats the building name; the shop's own address reads better.
+  // Keep the postal code either way.
+  const postal = ((place.address || '').match(/\b\d{6}\b/) || [])[0];
+  if (business.address && (!place.address || place.address === place.address.toUpperCase())) {
+    place.address = business.address + (postal && !/\b\d{6}\b/.test(business.address) ? ', Singapore ' + postal : '');
+  }
 }
 
 function merge(places, businesses, looksLikeAddress) {
