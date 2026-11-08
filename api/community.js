@@ -12,7 +12,7 @@
 // and feedback and counts can only be read by the owner in the Supabase dashboard.
 // Each visitor is limited (see _security.js) and stored only as a one-way scrambled code.
 
-const { visitorCode, dbLimit, tooMany } = require('./_security');
+const { visitorCode, quickLimit, dbLimit, tooMany } = require('./_security');
 
 const CATEGORIES = ['Shop', 'Food', 'Office', 'Condo or HDB gate', 'Loading bay', 'Rider waiting area', 'Other'];
 
@@ -203,7 +203,11 @@ async function save(req, res) {
 module.exports = async (req, res) => {
   try {
     if (req.method === 'POST') return await save(req, res);
-    if (req.method === 'GET') return await readCommunity(res);
+    if (req.method === 'GET') {
+      // Cached answers never reach here; this stops cache-dodging floods of 3,000-row reads
+      if (!quickLimit(req, 'community-read', 20, 60000)) return tooMany(res);
+      return await readCommunity(res);
+    }
     return res.status(405).json({ error: 'Use GET or POST' });
   } catch (err) {
     console.error('community error', err && err.message);

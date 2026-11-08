@@ -143,6 +143,12 @@ module.exports = async (req, res) => {
   if (!key) {
     return res.status(503).json({ error: 'Add your LTA DataMall key in Vercel as LTA_ACCOUNT_KEY.', needsKey: true });
   }
+  // Normal riders are served from Vercel's cache and never reach this point. Only requests
+  // that dodge the cache (extra junk in the address) do, and each one costs up to 14 calls
+  // to LTA, so cap those per visitor to protect the LTA key and the free Vercel allowance.
+  if (['incidents', 'carparks', 'busstops'].includes(kind) && !quickLimit(req, 'lta-' + kind, 20, 60000)) {
+    return tooMany(res);
+  }
   try {
     if (kind === 'incidents') {
       const rows = await fetchAll('TrafficIncidents', key, 4);
