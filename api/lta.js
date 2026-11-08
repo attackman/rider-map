@@ -143,6 +143,11 @@ module.exports = async (req, res) => {
   if (!key) {
     return res.status(503).json({ error: 'Add your LTA DataMall key in Vercel as LTA_ACCOUNT_KEY.', needsKey: true });
   }
+  // Limits per visitor. Extra words in the address skip Vercel's cache, so without these one
+  // person could make RiderKaki call LTA over and over and use up the daily quota.
+  if (kind !== 'arrival' && !quickLimit(req, 'lta-' + (kind === 'busstops' ? 'busstops' : 'live'), kind === 'busstops' ? 6 : 30, 60000)) {
+    return tooMany(res);
+  }
   try {
     if (kind === 'incidents') {
       const rows = await fetchAll('TrafficIncidents', key, 4);

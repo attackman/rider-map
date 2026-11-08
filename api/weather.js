@@ -6,6 +6,8 @@
 //   heat:     heat stress (WBGT) readings by station: Low / Moderate / High
 // If one feed is down, the others are still returned.
 
+const { quickLimit, tooMany } = require('./_security');
+
 const BASE = 'https://api-open.data.gov.sg/v2/real-time/api/';
 
 async function getFeed(path) {
@@ -77,6 +79,7 @@ function readHeat(data) {
 }
 
 module.exports = async (req, res) => {
+  if (!quickLimit(req, 'weather', 30, 60000)) return tooMany(res);   // extra words in the address skip the cache
   const [forecast, rainfall, heat] = await Promise.allSettled([
     getFeed('two-hr-forecast'),
     getFeed('rainfall'),

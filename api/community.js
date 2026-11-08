@@ -12,7 +12,7 @@
 // and feedback and counts can only be read by the owner in the Supabase dashboard.
 // Each visitor is limited (see _security.js) and stored only as a one-way scrambled code.
 
-const { visitorCode, dbLimit, tooMany } = require('./_security');
+const { visitorCode, dbLimit, quickLimit, tooMany } = require('./_security');
 
 const CATEGORIES = ['Shop', 'Food', 'Office', 'Condo or HDB gate', 'Loading bay', 'Rider waiting area', 'Other'];
 
@@ -21,9 +21,13 @@ function inSingapore(lat, lng) {
 }
 
 // Plain text only: no control characters, single spaces, limited length
+// Also folds look-alike characters (fullwidth "９" → "9") and removes invisible ones and
+// text-direction tricks that could flip how a tip or place name reads for other riders.
 function clean(text, max) {
   return String(text == null ? '' : text)
-    .replace(/[\u0000-\u001f\u007f<>]/g, ' ')
+    .normalize('NFKC')
+    .replace(/[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0]/g, '')
+    .replace(/[\u0000-\u001f\u007f-\u009f<>]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max);
@@ -77,13 +81,18 @@ function group(rows) {
 const CLOSED_NEEDS = 2;
 
 // Pickup tips: short, plain and safe to show to every rider
-const RUDE = /\b(fuck\w*|shit\w*|bitch\w*|knn|kanina\w*|lanjiao|pukimak|cheebai|chibai)\b/i;
+const RUDE = /\b(fuck\w*|shit\w*|bitch\w*|knn|kanina\w*|lanjiao|lj|pukimak|cheebai|chibai|cb|nabei)\b/i;
+const CONTACT = /\b(whats\s?app|telegram|tele|wechat|signal|call me|text me|sms me|dm me|pm me|contact me|add me)\b/i;
+const LINK = /(https?:|www\.|\b(t|wa|bit|tinyurl)\.(me|ly|com)\b|\b[a-z0-9-]+\s*(\.|\bdot\b)\s*(com|sg|net|org|io|ly|me|co|xyz|info|biz|app|link|site|online|top|club|shop|vip|asia|cc|tk)\b|\/\/)/i;
 function tipProblem(text) {
-  if (text.length < 4) return 'Please write a little more.';
-  if (/(https?:\/\/|www\.|\.(com|sg|net|org|io|ly)\b)/i.test(text)) return 'Please leave out links.';
+  if (text.length < 4 || (text.match(/[a-z]/gi) || []).length < 3) return 'Please write a little more.';
+  if (LINK.test(text)) return 'Please leave out links.';
   if (/\S+@\S+\.\S+/.test(text)) return 'Please leave out email addresses.';
-  if (/(\+?65[\s-]?)?\b[689]\d{3}[\s-]?\d{4}\b/.test(text)) return 'Please leave out phone numbers.';
-  if (RUDE.test(text)) return 'Please keep tips friendly.';
+  // Phone numbers, even written with spaces, dots or dashes between the digits ("9 1 2 3 4 5 6 7")
+  const digits = text.replace(/(?<=\d)[\s.\-()\/]+(?=\d)/g, '');
+  if (/(?<!\d)(\+?65)?[3689]\d{7}(?!\d)/.test(digits)) return 'Please leave out phone numbers.';
+  if (CONTACT.test(text)) return 'Please leave out contact details.';
+  if (RUDE.test(text.replace(/[^a-z\s]/gi, ''))) return 'Please keep tips friendly.';
   return null;
 }
 
@@ -100,7 +109,9 @@ function groupTips(rows) {
   }
   const places = [];
   for (const r of rows.filter((x) => x.kind === 'tip' && x.note)) {
-    if ((flaggers.get(String(r.id)) || new Set()).size >= TIP_HIDE_FLAGS) continue;
+    const flags = new Set(flaggers.get(String(r.id)) || []);
+    flags.delete(r.reporter);                       // flagging your own tip doesn't count
+    if (flags.size >= TIP_HIDE_FLAGS) continue;
     let place = places.find((g) => simple(g.name) === simple(r.name) && metresApart(g, r) < 80);
     if (!place) { place = { name: r.name, lat: r.lat, lng: r.lng, tips: [] }; places.push(place); }
     if (place.tips.length >= TIPS_PER_PLACE || place.tips.some((t) => simple(t.text) === simple(r.note))) continue;
@@ -109,11 +120,16 @@ function groupTips(rows) {
   return places;
 }
 
+// Each kind is read on its own, so a flood of tips or flags can't push reports out of view
 async function readCommunity(res) {
-  const resp = await supabase('place_reports?select=id,kind,name,category,note,lat,lng,created_at,reporter'
-    + '&created_at=gte.' + new Date(Date.now() - 365 * 24 * 3600 * 1000).toISOString()
-    + '&order=created_at.desc&limit=3000');
-  const rows = await resp.json();
+  const since = new Date(Date.now() - 365 * 24 * 3600 * 1000).toISOString();
+  const read = async (kinds, limit) => {
+    const resp = await supabase('place_reports?select=id,kind,name,category,note,lat,lng,created_at,reporter'
+      + '&kind=in.(' + kinds + ')&created_at=gte.' + since + '&order=created_at.desc&limit=' + limit);
+    return resp.json();
+  };
+  const parts = await Promise.all([read('closed,missing', 3000), read('tip', 3000), read('tipflag', 5000)]);
+  const rows = [].concat(...parts);
   res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
   return res.status(200).json({
     closed: group(rows.filter((r) => r.kind === 'closed')).filter((g) => g.count >= CLOSED_NEEDS).map(({ name, lat, lng, count, last }) => ({ name, lat, lng, count, last })),
@@ -203,7 +219,10 @@ async function save(req, res) {
 module.exports = async (req, res) => {
   try {
     if (req.method === 'POST') return await save(req, res);
-    if (req.method === 'GET') return await readCommunity(res);
+    if (req.method === 'GET') {
+      if (!quickLimit(req, 'community', 30, 60000)) return tooMany(res);
+      return await readCommunity(res);
+    }
     return res.status(405).json({ error: 'Use GET or POST' });
   } catch (err) {
     console.error('community error', err && err.message);
