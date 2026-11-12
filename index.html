@@ -2889,7 +2889,8 @@
     const sameRoad = (a, b) => !!a && !!b && String(a).toUpperCase() === String(b).toUpperCase();
 
     function classifyTurn(step) {
-      const s = String(step.text || step.turn || '').toLowerCase().replace(/-/g, ' ');
+      // OneMap's words first ("Take the ramp onto ..."), then its turn ("Right") for the side
+      const s = (String(step.text || '') + ' ' + String(step.turn || '')).toLowerCase().replace(/-/g, ' ');
       if (/arriv|destination/.test(s)) return 'arrive';
       if (/u turn|uturn|make a u/.test(s)) return 'uturn';
       if (/roundabout|rotary/.test(s)) return 'roundabout';
@@ -2935,14 +2936,20 @@
                        lanes: Array.isArray(s.lanes) && s.lanes.length >= 2 && s.lanes.length <= 8 ? s.lanes : null };
         // "Towards PIE / Changi" while staying on the PIE says just "Towards Changi"
         sign.toward = sign.toward.split(' / ').filter((x) => !sameRoad(x, street)).join(' / ');
+        // A slip road: the map shows the route taking one, or OneMap says "ramp"
+        sign.slip = !!(s.slip || sign.exit) || /\bramp\b|slip road/i.test(s.text || '');
+        sign.merge = /^merge\b/i.test(s.text || '');
         return { kind, street, phrase, along: routeGeo.total - snapToRoute(s.lng, s.lat).remaining_m, ...sign };
       }).sort((a, b) => a.along - b.along);
       let onRoad = '';                        // the road the rider is on before each step
-      for (const step of steps) {
-        reword(step, onRoad);
+      steps.forEach((step, i) => {
+        const exiting = step.slip && isExpressway(onRoad);
+        reword(step, onRoad, steps[i + 1]);
         step.from = onRoad;
-        if (step.street) onRoad = step.street;
-      }
+        // After an exit the rider is on the slip road, even when OneMap names it after the expressway
+        if (exiting) onRoad = sameRoad(step.street, onRoad) ? '' : step.street;
+        else if (step.street) onRoad = step.street;
+      });
       // No usable turns from OneMap: work them out from the shape of the route instead
       if (!steps.some((s) => SPOKEN_TURNS.includes(s.kind))) steps = steps.concat(turnsFromShape());
       return steps.sort((a, b) => a.along - b.along);
@@ -2964,11 +2971,26 @@
       return ((after - before + 540) % 360) - 180;
     }
 
-    function reword(step, onRoad) {
+    function reword(step, onRoad, next) {
       const side = /left/.test(step.kind) ? 'left' : /right/.test(step.kind) ? 'right' : null;
       if (!side) return;
       const bend = Math.abs(bendAt(step.along));
       const to = step.street;
+      // Onto a slip road from an ordinary road, usually to join an expressway just after
+      if (step.slip && !isExpressway(onRoad) && !isExpressway(to)) {
+        step.kind = 'slight_' + side;
+        const target = next && isExpressway(next.street) ? next.street : !sameRoad(to, onRoad) ? to : '';
+        step.phrase = 'Take the slip road on the ' + side + (target ? ' to ' + target : '');
+        return;
+      }
+      // Off an expressway by a slip road. OneMap often names the exit ramp after the expressway
+      // ("Take the ramp on the left onto Pan Island Expressway"), so this comes before "same road".
+      if (step.slip && isExpressway(onRoad)) {
+        step.kind = 'slight_' + side;
+        step.phrase = 'Take ' + (step.exit ? 'exit ' + step.exit : 'the exit') + ' on the ' + side
+          + (to && !sameRoad(to, onRoad) ? ' to ' + to : '');
+        return;
+      }
       // Same road before and after: a fork or a lane split, not a turn
       if (sameRoad(to, onRoad)) {
         step.kind = 'slight_' + side;
@@ -2983,9 +3005,14 @@
       }
       // Joining or changing expressway
       if (isExpressway(to)) {
-        const gentle = isExpressway(onRoad) || bend < 60;
+        const gentle = step.merge || isExpressway(onRoad) || bend < 60;
         step.kind = (gentle ? 'slight_' : '') + side;
-        step.phrase = (gentle ? 'Keep ' + side : 'Turn ' + side) + ' to join ' + to;
+        step.phrase = step.merge ? 'Merge onto ' + to : (gentle ? 'Keep ' + side : 'Turn ' + side) + ' to join ' + to;
+        return;
+      }
+      if (step.merge && to) {
+        step.kind = 'slight_' + side;
+        step.phrase = 'Merge onto ' + to;
         return;
       }
       // Let the arrow match the real bend of the road
@@ -3027,7 +3054,7 @@
       const step = turns[0];
       // The road the rider is on now: the last named step already passed
       const passed = navSteps.filter((s) => s.along <= here + 3 && s.street);
-      const road = passed.length ? passed[passed.length - 1].street : step.from;
+      const road = step.from !== undefined ? step.from : passed.length ? passed[passed.length - 1].street : '';
       return { step, dist: step.along - here, road, then: turns[1] && turns[1].along - step.along < THEN_GAP ? turns[1] : null };
     }
     const THEN_GAP = 250;                    // metres: "Then ↰" when two turns come this close together

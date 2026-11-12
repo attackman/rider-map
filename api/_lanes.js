@@ -99,6 +99,7 @@ function addRoadSigns(steps, coords) {
       .map((x) => ({ ...x, at: x.start })));
     if (link) {
       used.add(links.find((x) => x.it === link.it));
+      step.slip = true;                     // the route takes a slip road here
       const exit = closest(exits.filter((x) => Math.abs(x.at.along - link.start.along) <= 60 && x.it.ref));
       const ref = (exit && exit.it.ref) || link.it.ref;
       if (ref && /^[0-9]{1,3}[A-Z]?$/i.test(ref)) step.exit = ref.toUpperCase();
