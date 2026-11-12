@@ -593,10 +593,65 @@
     const START_COLOUR = '#34c759';
     const END_COLOUR = '#ff3b30';
 
-    const MAP_STYLES = {
-      light: 'https://tiles.openfreemap.org/styles/liberty',
-      dark: 'https://tiles.openfreemap.org/styles/dark'
+    // One detailed map for both themes. At night it is recoloured like Google Maps' dark mode:
+    // navy-grey land, grey roads that stand out clearly, gold expressways and soft labels.
+    const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+    const NIGHT = {
+      land: '#242f3e', area: '#283445', park: '#263c3f', water: '#17263c', waterLine: '#1f3b5c',
+      building: '#2f3b4c', buildingEdge: '#263141', casing: '#1b2330', minor: '#3d4759', major: '#505b70',
+      motorway: '#8a7356', path: '#353f4f', rail: '#4a5263', boundary: '#56606e',
+      roadText: '#aab3c0', placeText: '#d59563', areaText: '#bcc3cd', poiText: '#b9a58b', transitText: '#8fb3dc',
+      waterText: '#7393ba', halo: '#1b2330'
     };
+    function nightPaint(l) {
+      const id = l.id, src = l['source-layer'] || '';
+      switch (l.type) {
+        case 'background': return { 'background-color': NIGHT.land };
+        case 'raster': return { 'raster-brightness-max': 0.35, 'raster-saturation': -0.6 };
+        case 'fill-extrusion': return { 'fill-extrusion-color': NIGHT.building };
+        case 'fill':
+          if (src === 'water') return { 'fill-color': NIGHT.water };
+          if (src === 'park' || /wood|grass|wetland/.test(id)) return { 'fill-color': NIGHT.park, 'fill-outline-color': NIGHT.park };
+          if (src === 'building') return { 'fill-color': NIGHT.building, 'fill-outline-color': NIGHT.buildingEdge };
+          if (src === 'transportation') return null;            // patterned road areas: leave as they are
+          return { 'fill-color': NIGHT.area };
+        case 'line':
+          if (src === 'waterway') return { 'line-color': NIGHT.waterLine };
+          if (src === 'park') return { 'line-color': NIGHT.park };
+          if (src === 'boundary') return { 'line-color': NIGHT.boundary };
+          if (src === 'aeroway') return { 'line-color': NIGHT.major };
+          if (src !== 'transportation') return null;
+          if (/casing/.test(id)) return { 'line-color': NIGHT.casing };
+          if (/rail/.test(id)) return { 'line-color': NIGHT.rail };
+          if (/path|pedestrian/.test(id)) return { 'line-color': NIGHT.path };
+          if (/motorway/.test(id)) return { 'line-color': NIGHT.motorway };
+          if (/trunk|primary|secondary|tertiary|link/.test(id)) return { 'line-color': NIGHT.major };
+          return { 'line-color': NIGHT.minor };
+        case 'symbol': {
+          let colour = NIGHT.areaText;
+          if (src === 'transportation_name') colour = NIGHT.roadText;
+          else if (src === 'water_name' || src === 'waterway') colour = NIGHT.waterText;
+          else if (id === 'poi_transit') colour = NIGHT.transitText;
+          else if (src === 'poi' || src === 'aerodrome_label') colour = NIGHT.poiText;
+          else if (src === 'place' && /city|town|village|country|state/.test(id)) colour = NIGHT.placeText;
+          const p = { 'text-color': colour, 'text-halo-color': NIGHT.halo };
+          if (!(l.paint && l.paint['text-halo-width'])) p['text-halo-width'] = 1;
+          return p;
+        }
+      }
+      return null;
+    }
+    function nightStyle(style) {
+      for (const l of (style && style.layers) || []) {
+        const p = nightPaint(l);
+        if (p) l.paint = Object.assign({}, l.paint, p);
+      }
+      return style;
+    }
+    // Always a full reload (both themes use the same address), so the app's own layers are redrawn
+    function styleOptions(t) {
+      return t === 'dark' ? { diff: false, transformStyle: (previous, next) => nightStyle(next) } : { diff: false };
+    }
 
     // Route colours, brighter versions for the dark map
     const MODES = {
@@ -637,21 +692,22 @@
 
     function applyThemeToPage() {
       document.documentElement.dataset.theme = theme;
-      document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#000000' : '#f2f2f7';
+      document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#1b2330' : '#f2f2f7';
     }
 
     function lineColour() { return MODES[mode][theme]; }
-    function casingColour() { return theme === 'dark' ? '#0b0f14' : '#ffffff'; }
+    function casingColour() { return theme === 'dark' ? '#10161f' : '#ffffff'; }
 
     // ---------- map ----------
     const map = new maplibregl.Map({
       container: 'map',
-      style: MAP_STYLES[theme],
+      style: theme === 'dark' ? undefined : MAP_STYLE,   // dark: recoloured just below
       center: [103.8198, 1.3521],
       zoom: 11.2,
       maxBounds: [[103.55, 1.12], [104.15, 1.50]],
       attributionControl: false
     });
+    if (theme === 'dark') map.setStyle(MAP_STYLE, styleOptions('dark'));
     map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: false }), 'bottom-right'); // compass: tap to face north
 
     // Map credits (required by the OpenStreetMap licence): shown at first, then folded into
@@ -1464,12 +1520,13 @@
     });
 
     // The dark map's street and place names are dim; make them near-white with a dark outline
+    // Shop and food names (the app's own layers) in light text on the dark map
     function brightenMapLabels() {
       try {
         for (const layer of map.getStyle().layers) {
-          if (layer.type !== 'symbol' || !layer.layout || !layer.layout['text-field']) continue;
+          if (layer.type !== 'symbol' || !/^poi-/.test(layer.id) || !layer.layout || !layer.layout['text-field']) continue;
           map.setPaintProperty(layer.id, 'text-color', '#f4f6fa');
-          map.setPaintProperty(layer.id, 'text-halo-color', '#0e1116');
+          map.setPaintProperty(layer.id, 'text-halo-color', NIGHT.halo);
           map.setPaintProperty(layer.id, 'text-halo-width', 1.6);
         }
       } catch (e) { /* keep the map's own label colours if anything goes wrong */ }
@@ -1534,7 +1591,7 @@
       const changed = newTheme !== theme;
       theme = newTheme;
       applyThemeToPage();
-      if (changed) map.setStyle(MAP_STYLES[theme]);
+      if (changed) map.setStyle(MAP_STYLE, styleOptions(theme));
     }
 
     // In Auto, follow the phone when it switches between light and dark
@@ -3276,7 +3333,7 @@
     }
 
     // ---------- anonymous usage counts (no user, device or location) ----------
-    const APP_VERSION = '2026.11.12b';
+    const APP_VERSION = '2026.11.13';
     const lastTracked = {};
     function track(name) {
       if (!/^[a-z_:]{2,40}$/.test(name)) return;
