@@ -96,10 +96,11 @@ const CAMERAS = {
   '6716': ['PIE', 'Tuas Flyover']
 };
 
-// "https://.../2020-04-01/09-24/1001_0918_20200401092500_e0368e.jpg?..." → when the photo was taken (SG time)
+// ".../2026-11-12/22-20/2701_2210_20261112142020_E8CB5B.jpg?..." → when the photo was taken.
+// The folder is Singapore time; the time in the file name is UTC.
 function photoTime(link) {
   const m = /_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_/.exec(String(link || ''));
-  return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}+08:00` : '';
+  return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z` : '';
 }
 
 function readCameras(rows) {
@@ -110,10 +111,28 @@ function readCameras(rows) {
     const img = String(r.ImageLink || '');
     if (!/^\d{3,5}$/.test(id) || !inSingapore(lat, lng) || !/^https:\/\//.test(img)) continue;
     const [road, name] = CAMERAS[id] || ['', 'Traffic camera'];
-    out.push({ id, road, name, lat: Number(lat.toFixed(5)), lng: Number(lng.toFixed(5)), img, at: photoTime(img) });
+    const taken = Date.parse(r.at || '');
+    out.push({ id, road, name, lat: Number(lat.toFixed(5)), lng: Number(lng.toFixed(5)), img,
+               at: Number.isNaN(taken) ? photoTime(img) : new Date(taken).toISOString() });
   }
   // Checkpoints first, so they are easy to find in lists
   return out.sort((a, b) => (/Checkpoint/.test(b.road) - /Checkpoint/.test(a.road)) || a.id.localeCompare(b.id));
+}
+
+// The same cameras from data.gov.sg (LTA's feed sometimes lists only the checkpoint cameras):
+// { items: [{ cameras: [{ camera_id, image, timestamp, location: { latitude, longitude } }] }] }
+function readGovCameras(json) {
+  const cams = (json && Array.isArray(json.items) && json.items[0] && Array.isArray(json.items[0].cameras)) ? json.items[0].cameras : [];
+  return readCameras(cams.map((c) => ({
+    CameraID: c.camera_id, Latitude: c.location && c.location.latitude, Longitude: c.location && c.location.longitude,
+    ImageLink: c.image, at: c.timestamp })));
+}
+
+// LTA's cameras first; data.gov.sg fills in any it left out
+function mergeCameras(lta, gov) {
+  const seen = new Set(lta.map((c) => c.id));
+  return [...lta, ...gov.filter((c) => !seen.has(c.id))]
+    .sort((a, b) => (/Checkpoint/.test(b.road) - /Checkpoint/.test(a.road)) || a.id.localeCompare(b.id));
 }
 
 // Road types: A expressways, B major roads, C other main roads... (older feeds used 1, 2, 3...)
@@ -177,4 +196,4 @@ function readFloods(rows, now = Date.now()) {
   return out;
 }
 
-module.exports = { readCameras, readSpeedBands, readFloods, trafficLevel, photoTime, CAMERAS };
+module.exports = { readCameras, readGovCameras, mergeCameras, readSpeedBands, readFloods, trafficLevel, photoTime, CAMERAS };

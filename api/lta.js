@@ -9,7 +9,7 @@
 // Uses LTA DataMall with the free key stored in Vercel as LTA_ACCOUNT_KEY.
 
 const { quickLimit, tooMany } = require('./_security');
-const { readCameras, readSpeedBands, readFloods } = require('./_roads');
+const { readCameras, readGovCameras, mergeCameras, readSpeedBands, readFloods } = require('./_roads');
 
 const BASE = 'https://datamall2.mytransport.sg/ltaodataservice/';
 
@@ -60,6 +60,19 @@ async function fetchAllFast(endpoint, key, maxPages, together = 8) {
     if (results.some((rows) => rows.length < 500)) break;
   }
   return all;
+}
+
+// Traffic camera photos from data.gov.sg (no key needed)
+async function fetchGovCameras() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    const resp = await fetch('https://api.data.gov.sg/v1/transport/traffic-images', { headers: { accept: 'application/json' }, signal: controller.signal });
+    if (!resp.ok) throw new Error('data.gov.sg cameras failed (status ' + resp.status + ')');
+    return readGovCameras(await resp.json());
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // The newest LTA address first, older ones if LTA hasn't got it
@@ -232,8 +245,13 @@ module.exports = async (req, res) => {
     }
     if (kind === 'cameras') {
       // Photo links stop working after 5 minutes, so keep copies short
-      const cameras = await remembered('cameras', 50000, async () => readCameras(
-        await firstFound(['Traffic-Imagesv2', 'Traffic-Images'], (e) => fetchAll(e, key, 2))));
+      const cameras = await remembered('cameras', 50000, async () => {
+        const [lta, gov] = await Promise.all([
+          firstFound(['Traffic-Imagesv2', 'Traffic-Images'], (e) => fetchAll(e, key, 2)).then(readCameras).catch(() => []),
+          fetchGovCameras().catch(() => [])]);
+        if (!lta.length && !gov.length) throw Object.assign(new Error('no traffic cameras'), { status: 502 });
+        return mergeCameras(lta, gov);
+      });
       res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=60');
       return res.status(200).json({ cameras });
     }
