@@ -1259,9 +1259,10 @@
       sheet.innerHTML = '';
       sheet.append(panel);
       sheet.hidden = false;
+      syncBack();
     }
-    function openSheet() { sheetMode = 'layers'; renderSheet(); sheet.hidden = false; }
-    function closeSheet() { sheet.hidden = true; sheet.innerHTML = ''; sheetMode = null; }
+    function openSheet() { sheetMode = 'layers'; renderSheet(); sheet.hidden = false; syncBack(); }
+    function closeSheet() { sheet.hidden = true; sheet.innerHTML = ''; sheetMode = null; syncBack(); }
     function refreshLayersSheet() { if (!sheet.hidden && sheetMode === 'layers') renderSheet(); }
     sheet.addEventListener('click', (e) => { if (e.target === sheet && sheetMode !== 'welcome') closeSheet(); });
     document.getElementById('layers').addEventListener('click', openSheet);
@@ -1621,7 +1622,46 @@
       ctrl.style.bottom = card.hidden ? '' : (card.offsetHeight + 12) + 'px';
     }
 
+    // ---------- the phone's back button ----------
+    // Android's back button (and the browser's) would close the app, because the app is one page.
+    // While something is open (a menu, a card, a search, a planned route), the app keeps one extra
+    // step in the browser history. Back then closes the open thing instead; with nothing open,
+    // back leaves the app as usual.
+    const back = { armed: false, skip: 0, queued: false };
+    function backAction() {
+      if (!sheet.hidden) return () => { if (sheetMode === 'welcome') save('welcomed', '1'); closeSheet(); };
+      if (document.activeElement === input || input.value || list.childElementCount) return () => {
+        input.value = ''; list.innerHTML = ''; list.dataset.quick = ''; lastQuery = ''; input.blur(); updateTop();
+      };
+      if (!card.hidden && card.onBack) return card.onBack;
+      return null;
+    }
+    // Runs after the current tap has finished, so the card's back action is known
+    function syncBack() {
+      if (back.queued) return;
+      back.queued = true;
+      setTimeout(() => {
+        back.queued = false;
+        const want = !!backAction();
+        if (want && !back.armed) {
+          try { history.pushState({ riderkaki: 1 }, ''); back.armed = true; } catch (e) { /* no history: ignore */ }
+        } else if (!want && back.armed) {
+          back.armed = false;
+          back.skip++;               // closed with a button: take our extra step back out quietly
+          history.back();
+        }
+      }, 0);
+    }
+    window.addEventListener('popstate', () => {
+      if (back.skip) { back.skip--; return; }
+      back.armed = false;
+      const act = backAction();
+      if (act) { act(); track('back_button'); }
+      syncBack();
+    });
+
     function showCard(children, extraClass) {
+      card.onBack = null;          // what the phone's back button does for this card (set just after)
       card.innerHTML = '';
       card.className = 'card' + (extraClass ? ' ' + extraClass : '');
       children.forEach((c) => card.appendChild(c));
@@ -1631,6 +1671,7 @@
     }
 
     function hideCard() {
+      card.onBack = null;
       card.hidden = true;
       card.innerHTML = '';
       card.className = 'card';
@@ -1643,6 +1684,7 @@
       const searching = document.activeElement === input || !!input.value.trim() || list.childElementCount > 0;
       document.body.classList.toggle('searching', searching);
       clearBtn.hidden = !input.value;
+      syncBack();
       updateInstallTop();
       renderChips();
     }
@@ -1823,6 +1865,7 @@
         for (const line of r.lines || []) body.push(el('div', 'flood-text', line));
         body.push(row);
         showCard(body);
+        card.onBack = closePlaceCard;
         if (r.flood) track('flood_card');
         return;
       }
@@ -1888,6 +1931,7 @@
       }
       if (links.childElementCount) parts.push(links);
       showCard(parts);
+      card.onBack = closePlaceCard;
     }
 
     // ---------- pickup tips: short notes riders leave on a place ("collect at the side counter") ----------
@@ -2056,6 +2100,7 @@
         parts.push(row);
       }
       showCard(parts);
+      card.onBack = closePlaceCard;
       track('camera_view');
       show(cameraById(r.camera));
       if (!cameraById(r.camera)) loadFeed('cameras').then(() => show(cameraById(r.camera)));
@@ -2599,6 +2644,7 @@
       row.append(clear);
 
       showCard([modeSwitch(), trip, ...extra, el('div', 'wake'), row]);
+      card.onBack = clearRoute;
       updateWakeNote();
     }
 
@@ -3141,6 +3187,7 @@
       if (nudge) parts.push(nudge);
       else if (!parkPlan) { const inv = inviteNudge(); if (inv) parts.push(inv); }
       showCard(parts);
+      card.onBack = clearRoute;
       track('ride_arrived');
       letScreenSleep();
     }
@@ -3224,10 +3271,12 @@
       }
 
       showCard(parts, 'ride');
+      // Back mustn't end a ride by accident, or close the app mid-ride
+      card.onBack = () => showToast('Riding. Tap End to stop.');
     }
 
     // ---------- anonymous usage counts (no user, device or location) ----------
-    const APP_VERSION = '2026.11.12';
+    const APP_VERSION = '2026.11.12b';
     const lastTracked = {};
     function track(name) {
       if (!/^[a-z_:]{2,40}$/.test(name)) return;
@@ -3451,6 +3500,7 @@
       row.append(cancel, use);
       showCard([el('div', 'place', 'Add a missing place'),
                 el('div', 'sub', 'Move the map so the pin sits exactly on the place, then tap Use this spot.'), row]);
+      card.onBack = () => { picker.hidden = true; hideCard(); };
     }
 
     function field(labelText, control) {
