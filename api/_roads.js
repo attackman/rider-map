@@ -147,10 +147,10 @@ function trafficLevel(category, band) {
 }
 
 // Each stretch as [startLng, startLat, endLng, endLat, level]. Every expressway stretch is kept
-// (green too, so riders see the whole picture); on major roads only the slow and jammed ones,
-// which keeps the download small.
+// (green too, so riders see the whole picture). On major roads only real queues are kept: at least
+// 3 slow or jammed stretches in a row (about 300 m or more), not one red light at a junction.
 function readSpeedBands(rows) {
-  const out = [];
+  const out = [], major = [];
   for (const r of rows) {
     const raw = String(r.RoadCategory == null ? '' : r.RoadCategory).trim().toUpperCase();
     const category = CATEGORY[raw] || raw;
@@ -160,9 +160,26 @@ function readSpeedBands(rows) {
     if (level < 0 || (category !== 'A' && level === 0)) continue;
     const c = [r.StartLon, r.StartLat, r.EndLon, r.EndLat].map(Number);
     if (!inSingapore(c[1], c[0]) || !inSingapore(c[3], c[2])) continue;
-    out.push([...c.map((v) => Number(v.toFixed(5))), level]);
+    const link = [...c.map((v) => Number(v.toFixed(5))), level];
+    (category === 'A' ? out : major).push(link);
   }
+  out.push(...queues(major, 3));
   return out.sort((a, b) => a[4] - b[4]);    // jams last, so they are drawn on top
+}
+
+// Stretches that join end to start, grouped; groups smaller than `min` are dropped
+function queues(links, min) {
+  const parent = links.map((_, i) => i);
+  const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const at = new Map();
+  links.forEach((l, i) => {
+    for (const key of [l[0] + ',' + l[1], l[2] + ',' + l[3]]) {
+      if (at.has(key)) parent[find(i)] = find(at.get(key)); else at.set(key, i);
+    }
+  });
+  const size = new Map();
+  links.forEach((_, i) => { const r = find(i); size.set(r, (size.get(r) || 0) + 1); });
+  return links.filter((_, i) => size.get(find(i)) >= min);
 }
 
 // PUB flash flood alerts. A "Cancel" message ends the earlier alert for the same place, and every
