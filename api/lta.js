@@ -17,8 +17,18 @@ function inSingapore(lat, lng) {
   return lat > 1.1 && lat < 1.5 && lng > 103.5 && lng < 104.2;
 }
 
-// One page (500 records) of a DataMall dataset
+// One page (500 records) of a DataMall dataset. LTA now and then answers 500 for a single page,
+// so that page is asked for once more before giving up.
 async function fetchPage(endpoint, key, page) {
+  try {
+    return await fetchPageOnce(endpoint, key, page);
+  } catch (err) {
+    if (!err.retry) throw err;
+    await new Promise((r) => setTimeout(r, 400));
+    return fetchPageOnce(endpoint, key, page);
+  }
+}
+async function fetchPageOnce(endpoint, key, page) {
   const url = BASE + endpoint + (page ? '?$skip=' + page * 500 : '');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
@@ -32,7 +42,7 @@ async function fetchPage(endpoint, key, page) {
     throw Object.assign(new Error('LTA rejected the key (status ' + resp.status + '). Check LTA_ACCOUNT_KEY in Vercel.'), { status: 502 });
   }
   if (resp.status === 404) throw Object.assign(new Error('LTA dataset not found: ' + endpoint), { status: 502, notFound: true });
-  if (!resp.ok) throw Object.assign(new Error('LTA data failed (status ' + resp.status + ')'), { status: 502 });
+  if (!resp.ok) throw Object.assign(new Error('LTA data failed (status ' + resp.status + ')'), { status: 502, retry: resp.status >= 500 });
   const json = await resp.json();
   return Array.isArray(json.value) ? json.value : [];
 }
@@ -249,7 +259,6 @@ module.exports = async (req, res) => {
         const [lta, gov] = await Promise.all([
           firstFound(['Traffic-Imagesv2', 'Traffic-Images'], (e) => fetchAll(e, key, 2)).then(readCameras).catch(() => []),
           fetchGovCameras().catch((e) => { console.warn('data.gov.sg cameras:', e.name === 'AbortError' ? 'timed out' : e.message); return []; })]);
-        if (gov.length < 30) console.warn('data.gov.sg cameras: only', gov.length);
         if (!lta.length && !gov.length) throw Object.assign(new Error('no traffic cameras'), { status: 502 });
         return mergeCameras(lta, gov);
       });
