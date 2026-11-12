@@ -36,13 +36,20 @@ const pt = (p) => [r5(p.lon), r5(p.lat)];
 module.exports = async (req, res) => {
   if (!quickLimit(req, 'osm-export', 3, 60000)) return tooMany(res);
   try {
-    const resp = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'RiderKaki/1.0 (https://riderkaki.sg)' },
-      body: 'data=' + encodeURIComponent(QUERY)
-    });
-    if (!resp.ok) return res.status(502).json({ error: 'Overpass status ' + resp.status });
-    const json = await resp.json();
+    let json = null; const tried = [];
+    for (const server of ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter',
+                          'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter']) {
+      try {
+        const resp = await fetch(server, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'RiderKaki/1.0 (https://riderkaki.sg)' },
+          body: 'data=' + encodeURIComponent(QUERY)
+        });
+        tried.push(server + ' ' + resp.status);
+        if (resp.ok) { json = await resp.json(); break; }
+      } catch (e) { tried.push(server + ' ' + e.message); }
+    }
+    if (!json) return res.status(502).json({ error: 'Overpass failed', tried });
     const exits = [], links = [], signs = [], lanes = [];
     for (const e of json.elements || []) {
       const t = e.tags || {};
