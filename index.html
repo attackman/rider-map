@@ -57,7 +57,7 @@
       --seg-on: #ffffff;
       --edge: rgba(0, 0, 0, 0.04);
       --grabber: rgba(60, 60, 67, 0.3);
-      --banner: #1c1c1e;
+      --banner: #0f7a43; --banner-then: #0a5e33;   /* Google Maps navigation green */
     }
     :root[data-theme="dark"] {
       --bg: #000000;
@@ -83,7 +83,7 @@
       --seg-on: #636366;
       --edge: rgba(255, 255, 255, 0.08);
       --grabber: rgba(235, 235, 245, 0.3);
-      --banner: #2c2c2e;
+      --banner: #0f6b3c; --banner-then: #0a4f2c;
     }
 
     html, body { margin: 0; height: 100%; background: var(--map-bg); }
@@ -388,6 +388,14 @@
     }
     .turn[hidden] { display: none; }
     .turn .next { margin-bottom: 0; box-shadow: var(--shadow); padding-right: 8px; min-height: 64px; }
+    .turn .next.has-then { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+    /* "Then ↰" under the banner when the next turn comes soon after this one, like Google Maps */
+    .next-then { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 7px; border-radius: 0 0 14px 14px;
+      background: var(--banner-then); color: #ffffff; font-size: 16px; font-weight: 600; box-shadow: var(--shadow); }
+    .next-then { max-width: 100%; box-sizing: border-box; }
+    .next-then .then-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .next-then .then-icon { flex: none; width: 22px; height: 22px; display: inline-block; }
+    .next-then .then-icon svg { width: 22px; height: 22px; display: block; }
     .turn .next-words { flex: 1; min-width: 0; }
     .next-search {
       flex: none; width: 48px; height: 48px; border: 0; border-radius: 12px;
@@ -2857,6 +2865,20 @@
       }).join(' ');
     }
 
+    // Long expressway names as riders say them: "Pan Island Expressway" -> "PIE"
+    const EXPRESSWAY_CODES = {
+      'PAN ISLAND EXPRESSWAY': 'PIE', 'AYER RAJAH EXPRESSWAY': 'AYE', 'CENTRAL EXPRESSWAY': 'CTE', 'EAST COAST PARKWAY': 'ECP',
+      'KRANJI EXPRESSWAY': 'KJE', 'BUKIT TIMAH EXPRESSWAY': 'BKE', 'SELETAR EXPRESSWAY': 'SLE', 'TAMPINES EXPRESSWAY': 'TPE',
+      'KALLANG PAYA LEBAR EXPRESSWAY': 'KPE', 'KALLANG-PAYA LEBAR EXPRESSWAY': 'KPE', 'MARINA COASTAL EXPRESSWAY': 'MCE',
+      'NORTH SOUTH CORRIDOR': 'NSC', 'NORTH-SOUTH CORRIDOR': 'NSC'
+    };
+    function shortRoad(street) {
+      const up = String(street || '').toUpperCase().replace(/\s+/g, ' ').trim();
+      return EXPRESSWAY_CODES[up] || EXPRESSWAY_CODES[up.replace(/-/g, ' ')] || street;
+    }
+    const isExpressway = (street) => EXPRESSWAYS.includes(String(street || '').toUpperCase());
+    const sameRoad = (a, b) => !!a && !!b && String(a).toUpperCase() === String(b).toUpperCase();
+
     function classifyTurn(step) {
       const s = String(step.text || step.turn || '').toLowerCase().replace(/-/g, ' ');
       if (/arriv|destination/.test(s)) return 'arrive';
@@ -2889,20 +2911,74 @@
       }
     }
 
-    // Steps from OneMap, each placed at its distance along the route
+    // Steps from OneMap, each placed at its distance along the route, then worded the way
+    // Google Maps does: the arrow follows the real shape of the road, "Keep left to stay on PIE"
+    // when the road doesn't change, "Take the exit on the left" off an expressway.
     function buildSteps(data) {
       if (!routeGeo || routeGeo.total <= 0 || routeGeo.pts.length < 2) return [];
       let steps = (data.steps || []).map((s) => {
         const kind = classifyTurn(s);
-        const street = niceStreet(s.street);
+        const street = shortRoad(niceStreet(s.street));
         let phrase = phraseFor(kind, street);
         const head = /^head\s+(.+?)(\s+on\s+|$)/i.exec(s.text || '');
         if (kind === 'depart' && head) phrase = 'Head ' + head[1].toLowerCase() + (street ? ' on ' + street : '');
         return { kind, street, phrase, along: routeGeo.total - snapToRoute(s.lng, s.lat).remaining_m };
-      });
+      }).sort((a, b) => a.along - b.along);
+      let onRoad = '';                        // the road the rider is on before each step
+      for (const step of steps) {
+        reword(step, onRoad);
+        step.from = onRoad;
+        if (step.street) onRoad = step.street;
+      }
       // No usable turns from OneMap: work them out from the shape of the route instead
       if (!steps.some((s) => SPOKEN_TURNS.includes(s.kind))) steps = steps.concat(turnsFromShape());
       return steps.sort((a, b) => a.along - b.along);
+    }
+
+    // How much the route bends at a point: degrees, + right / - left (0 if too close to either end)
+    function bendAt(d) {
+      const g = routeGeo;
+      if (!g || d < 15 || d > g.total - 15) return 0;
+      const pointAt = (x) => {
+        x = Math.max(0, Math.min(g.total, x));
+        let i = 0;
+        while (i < g.cum.length - 2 && g.cum[i + 1] < x) i++;
+        const seg = (g.cum[i + 1] - g.cum[i]) || 1, t = (x - g.cum[i]) / seg;
+        return [g.pts[i][0] + (g.pts[i + 1][0] - g.pts[i][0]) * t, g.pts[i][1] + (g.pts[i + 1][1] - g.pts[i][1]) * t];
+      };
+      const bearing = (a, b) => Math.atan2(b[0] - a[0], b[1] - a[1]) * 180 / Math.PI;
+      const before = bearing(pointAt(d - 30), pointAt(d)), after = bearing(pointAt(d), pointAt(d + 30));
+      return ((after - before + 540) % 360) - 180;
+    }
+
+    function reword(step, onRoad) {
+      const side = /left/.test(step.kind) ? 'left' : /right/.test(step.kind) ? 'right' : null;
+      if (!side) return;
+      const bend = Math.abs(bendAt(step.along));
+      const to = step.street;
+      // Same road before and after: a fork or a lane split, not a turn
+      if (sameRoad(to, onRoad)) {
+        step.kind = 'slight_' + side;
+        step.phrase = 'Keep ' + side + ' to stay on ' + to;
+        return;
+      }
+      // Leaving an expressway: always a slip road
+      if (isExpressway(onRoad) && !isExpressway(to)) {
+        step.kind = 'slight_' + side;
+        step.phrase = 'Take the exit on the ' + side + (to ? ' to ' + to : '');
+        return;
+      }
+      // Joining or changing expressway
+      if (isExpressway(to)) {
+        const gentle = isExpressway(onRoad) || bend < 60;
+        step.kind = (gentle ? 'slight_' : '') + side;
+        step.phrase = (gentle ? 'Keep ' + side : 'Turn ' + side) + ' to join ' + to;
+        return;
+      }
+      // Let the arrow match the real bend of the road
+      if (/^(left|right|sharp_)/.test(step.kind) && bend > 0 && bend < 45) step.kind = 'slight_' + side;
+      else if (step.kind === side && bend > 130) step.kind = 'sharp_' + side;
+      step.phrase = phraseFor(step.kind, to);
     }
 
     function turnsFromShape() {
@@ -2933,9 +3009,16 @@
     function nextTurn() {
       if (!progress || !routeGeo || !navSteps.length) return null;
       const here = routeGeo.total - progress.remaining_m;
-      const step = navSteps.find((s) => SPOKEN_TURNS.includes(s.kind) && s.along > here + 3);
-      return step ? { step, dist: step.along - here } : null;
+      const turns = navSteps.filter((s) => SPOKEN_TURNS.includes(s.kind) && s.along > here + 3);
+      if (!turns.length) return null;
+      const step = turns[0];
+      // The road the rider is on now: the last named step already passed
+      const passed = navSteps.filter((s) => s.along <= here + 3 && s.street);
+      const road = passed.length ? passed[passed.length - 1].street : step.from;
+      return { step, dist: step.along - here, road, then: turns[1] && turns[1].along - step.along < THEN_GAP ? turns[1] : null };
     }
+    const THEN_GAP = 250;                    // metres: "Then ↰" when two turns come this close together
+    const CONTINUE_FROM = 2000;              // metres: further than this, the banner says "Continue on PIE" first
 
     function spokenDistance(m) {
       if (m < 200) return Math.max(10, Math.round(m / 10) * 10) + ' metres';
@@ -2972,6 +3055,11 @@
       const n = nextTurn();
       if (!n) return;
       const t = ANNOUNCE[mode];
+      if (n.dist > CONTINUE_FROM && n.road && !n.step.saidContinue) {
+        n.step.saidContinue = true;
+        if (Date.now() - rideStartedAt > 8000) speak('Continue on ' + n.road + ' for ' + spokenDistance(n.dist));
+        return;
+      }
       if (n.dist <= t.near) {
         if (!n.step.saidNear) { n.step.saidNear = n.step.saidFar = true; speak(n.step.phrase); }
       } else if (n.dist <= t.far && !n.step.saidFar) {
@@ -2991,15 +3079,23 @@
 
     // Big "next turn" banner at the top of the ride card
     const SEARCH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.6-4.6"/></svg>';
+    function arrowIcon(kind, cls) {
+      const icon = el('span', cls);
+      icon.innerHTML = ARROW_SVG; // fixed icon, no user text
+      icon.style.transform = 'rotate(' + (TURN_ANGLE[kind] || 0) + 'deg)';
+      return icon;
+    }
+    // Like Google Maps: far from the next turn, "↑ Continue on PIE" with the distance, and the turn
+    // itself in the strip below; close to it, the turn with its arrow. "Then ↰" when two turns
+    // come close together.
     function nextTurnBanner() {
       const n = nextTurn();
       const box = el('div', 'next');
-      const icon = el('div', 'next-icon');
-      icon.innerHTML = ARROW_SVG; // fixed icon, no user text
-      const kind = n ? n.step.kind : 'straight';
-      icon.style.transform = 'rotate(' + (TURN_ANGLE[kind] || 0) + 'deg)';
+      const far = n && n.dist > CONTINUE_FROM && n.road;
+      const kind = n && !far ? n.step.kind : 'straight';
+      const icon = arrowIcon(kind, 'next-icon');
       const words = el('div', 'next-words');
-      words.append(el('div', 'next-what', n ? n.step.phrase : 'Continue to your destination'));
+      words.append(el('div', 'next-what', !n ? 'Continue to your destination' : far ? 'Continue on ' + n.road : n.step.phrase));
       if (n) words.append(el('div', 'next-dist', formatDistance(Math.max(10, Math.round(n.dist / 10) * 10))));
       // Search for a new destination mid-ride
       const find = el('button', 'next-search');
@@ -3008,7 +3104,15 @@
       find.innerHTML = SEARCH_SVG; // fixed icon, no user text
       find.addEventListener('click', () => { document.body.classList.add('ride-search'); input.focus(); });
       box.append(icon, words, find);
-      return box;
+      const after = far ? n.step : n && n.then;
+      if (!after) return box;
+      box.classList.add('has-then');
+      const wrap = el('div', 'next-wrap');
+      const then = el('div', 'next-then');
+      then.append(document.createTextNode('Then'), arrowIcon(after.kind, 'then-icon'));
+      if (far) then.append(el('span', 'then-text', lowerFirst(after.phrase)));
+      wrap.append(box, then);
+      return wrap;
     }
 
     // ---------- live ride tracking ----------
@@ -3333,7 +3437,7 @@
     }
 
     // ---------- anonymous usage counts (no user, device or location) ----------
-    const APP_VERSION = '2026.11.13';
+    const APP_VERSION = '2026.11.13b';
     const lastTracked = {};
     function track(name) {
       if (!/^[a-z_:]{2,40}$/.test(name)) return;
