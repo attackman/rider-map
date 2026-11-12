@@ -67,5 +67,10 @@
       "destination": "https://g2.riderkaki.sg/",
       "permanent": false
     }
-  ]
+  ],
+  "functions": {
+    "api/lta.js": {
+      "maxDuration": 30
+    }
+  }
 }

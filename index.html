@@ -220,6 +220,15 @@
     .bus-no { font-weight: 700; font-size: 15px; color: #00897b; }
     :root[data-theme="dark"] .bus-no { color: #4cc3b4; }
     .bus-time { font-size: 13.5px; color: var(--text); white-space: nowrap; }
+    /* Live traffic camera photo on a camera's card */
+    .cam-photo { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 12px;
+      background: var(--chip); margin: 8px 0 4px; }
+    .cam-when { font-size: 13px; color: var(--muted); }
+    .cam-near { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+    .cam-near button { border: 0; border-radius: 999px; background: var(--chip); color: var(--text); font: inherit;
+      font-size: 14px; min-height: 36px; padding: 0 12px; cursor: pointer; }
+    /* A PUB flood alert's card */
+    .flood-text { font-size: 15px; line-height: 1.4; margin: 6px 0 2px; color: var(--text); }
     .install-steps { flex-basis: 100%; margin: 2px 0 4px; padding-left: 22px; font-size: 15px; line-height: 1.5; }
 
     /* Rain and heat alerts: like iOS notification banners */
@@ -233,6 +242,8 @@
     .alert-heat { background: rgba(255, 240, 222, 0.92); color: #8a4500; }
     :root[data-theme="dark"] .alert-rain { background: rgba(14, 37, 71, 0.92); color: #d6e6ff; }
     :root[data-theme="dark"] .alert-heat { background: rgba(58, 36, 8, 0.92); color: #ffe2bf; }
+    .alert-flood { background: rgba(255, 228, 226, 0.94); color: #8a1209; }
+    :root[data-theme="dark"] .alert-flood { background: rgba(72, 16, 12, 0.94); color: #ffd6d2; }
     .alert-text { flex: 1; min-width: 0; cursor: pointer; padding: 4px 0; }
     .alert-close {
       border: 0; background: transparent; color: inherit; opacity: .7;
@@ -756,6 +767,9 @@
     const LAYER_LIST = [
       { id: 'rain',      label: 'Rain',               hint: 'Rain forecast for the next 2 hours, and where it is raining now', colour: '#007aff' },
       { id: 'incidents', label: 'Traffic incidents',  hint: 'Accidents, breakdowns and road works (LTA)', colour: '#ff3b30' },
+      { id: 'traffic',   label: 'Live traffic',       hint: 'Expressways and main roads: green moving, orange slow, red jammed. Every 5 min (LTA)', colour: '#ff9500' },
+      { id: 'cameras',   label: 'Traffic cameras',    hint: 'Live photos of expressways, the Causeway and Second Link (LTA)', colour: '#3a3a3c' },
+      { id: 'floods',    label: 'Floods',             hint: 'Flash floods reported by PUB right now', colour: '#0040dd' },
       { id: 'moto',      label: 'Motorcycle parking', hint: 'Green numbers: free lots right now. Grey M: other motorcycle parking (no live count)', colour: '#248a3d' },
       { id: 'cars',      label: 'Car parking',        hint: 'Purple numbers: free lots right now. Grey P: other car parks, incl. private (no live count)', colour: '#5856d6' },
       { id: 'bus',       label: 'Bus stops',          hint: 'Every bus stop with its 5-digit code (LTA). Big dots are bus interchanges', colour: '#00897b' },
@@ -764,18 +778,22 @@
       { id: 'shelter',   label: 'Shelters',           hint: 'Bus stop and other shelters, to wait out the rain', colour: '#8e8e93' }
     ];
     const FEED_FOR = { rain: 'weather', incidents: 'incidents', moto: 'carparks', cars: 'carparks', bus: 'busstops',
+                       traffic: 'traffic', cameras: 'cameras', floods: 'floods',
                        toilet: null, water: null, shelter: null };   // these come straight from the map tiles
     // Map layer types for toilets, drinking water and shelters inside the map tiles (OpenStreetMap)
     const AMENITY_TYPE = { toilet: 'toilets', water: 'drinking_water', shelter: 'shelter' };
     const shownLayers = Object.assign({}, loadJson('layers', {}));
-    const alertSettings = Object.assign({ rain: true, heat: true }, loadJson('alertSettings', {}));
+    const alertSettings = Object.assign({ rain: true, heat: true, flood: true }, loadJson('alertSettings', {}));
 
     // Live data, fetched only when a layer or alert needs it, and refreshed when it gets old
     const feeds = {
       weather:   { url: '/api/weather',             maxAge: 10 * 60 * 1000 },
       incidents: { url: '/api/lta?kind=incidents',  maxAge: 3 * 60 * 1000 },
       carparks:  { url: '/api/lta?kind=carparks',   maxAge: 3 * 60 * 1000 },
-      busstops:  { url: '/api/lta?kind=busstops',   maxAge: 24 * 60 * 60 * 1000 }   // bus stops hardly change
+      busstops:  { url: '/api/lta?kind=busstops',   maxAge: 24 * 60 * 60 * 1000 },  // bus stops hardly change
+      traffic:   { url: '/api/lta?kind=traffic',    maxAge: 4 * 60 * 1000 },         // LTA updates every 5 min
+      cameras:   { url: '/api/lta?kind=cameras',    maxAge: 2 * 60 * 1000 },         // photo links last 5 min
+      floods:    { url: '/api/lta?kind=floods',     maxAge: 3 * 60 * 1000 }
     };
     for (const f of Object.values(feeds)) Object.assign(f, { data: null, at: 0, error: null, loading: null });
 
@@ -805,7 +823,8 @@
 
     const pointFeature = (lng, lat, props) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: props });
     const collection = (features) => ({ type: 'FeatureCollection', features });
-    const OVERLAY_SOURCES = ['ov-rain', 'ov-raining', 'ov-incidents', 'ov-moto', 'ov-cars', 'ov-bus', 'ov-community'];
+    const OVERLAY_SOURCES = ['ov-traffic', 'ov-rain', 'ov-raining', 'ov-incidents', 'ov-moto', 'ov-cars', 'ov-bus', 'ov-community',
+                             'ov-cameras', 'ov-floods'];
 
     function overlayData(id) {
       const w = feeds.weather.data, inc = feeds.incidents.data, cp = feeds.carparks.data, bs = feeds.busstops.data;
@@ -822,6 +841,19 @@
         case 'ov-cars': return lots('car', 'car');
         case 'ov-bus': return collection(bs && bs.busstops ? bs.busstops
           .map((b) => pointFeature(b.lng, b.lat, { t: 'bus', code: b.code, name: b.name, road: b.road, int: b.int })) : []);
+        case 'ov-traffic': {
+          const t = feeds.traffic.data;
+          return collection(t && t.links ? t.links.map((l) => ({ type: 'Feature',
+            geometry: { type: 'LineString', coordinates: [[l[0], l[1]], [l[2], l[3]]] }, properties: { level: l[4] } })) : []);
+        }
+        case 'ov-cameras': {
+          const c = feeds.cameras.data;
+          return collection(c && c.cameras ? c.cameras.map((k) => pointFeature(k.lng, k.lat, { t: 'camera', id: k.id, name: k.name, road: k.road })) : []);
+        }
+        case 'ov-floods': {
+          const f = feeds.floods.data;
+          return collection(f && f.floods ? f.floods.map((k) => pointFeature(k.lng, k.lat, { t: 'flood', id: k.id })) : []);
+        }
         case 'ov-community': return collection(community.missing
           .map((m) => pointFeature(m.lng, m.lat, { t: 'community', name: m.name, category: m.category || '', note: m.note || '' })));
       }
@@ -831,13 +863,37 @@
     const GROUP_LAYERS = {
       rain: ['ov-rain-area', 'ov-rain-name', 'ov-raining-dot', 'ov-raining-mm'],
       incidents: ['ov-incidents-dot', 'ov-incidents-name'],
+      traffic: ['ov-traffic-line'],
+      cameras: ['ov-cameras-dot', 'ov-cameras-icon', 'ov-cameras-name'],
+      floods: ['ov-floods-ring', 'ov-floods-dot', 'ov-floods-mark', 'ov-floods-name'],
       moto: ['ov-moto-dot', 'ov-moto-num'],
       cars: ['ov-cars-dot', 'ov-cars-num'],
       bus: ['ov-bus-int-dot', 'ov-bus-dot', 'ov-bus-int-letter', 'ov-bus-letter', 'ov-bus-int-name', 'ov-bus-name']
     };
-    const OVERLAY_TAP = ['ov-community-dot', 'ov-incidents-dot', 'ov-moto-dot', 'ov-cars-dot', 'ov-bus-int-dot', 'ov-bus-dot', 'ov-osm-parking', 'ov-amen-dot', 'ov-raining-dot', 'ov-rain-area'];
+    const OVERLAY_TAP = ['ov-floods-dot', 'ov-cameras-dot', 'ov-community-dot', 'ov-incidents-dot', 'ov-moto-dot', 'ov-cars-dot', 'ov-bus-int-dot', 'ov-bus-dot', 'ov-osm-parking', 'ov-amen-dot', 'ov-raining-dot', 'ov-rain-area'];
     const RAIN_COLOUR = ['case', ['in', 'Thunder', ['get', 'forecast']], '#af52de',
                          ['in', 'Shower', ['get', 'forecast']], '#007aff', '#5ac8fa'];
+
+    // A small white camera, drawn once and kept by the map (needed again after a light/dark switch)
+    function addCameraIcon() {
+      if (!map.addImage || (map.hasImage && map.hasImage('rk-camera'))) return;
+      try {
+        const size = 28, c = document.createElement('canvas');
+        c.width = c.height = size;
+        const g = c.getContext('2d');
+        if (!g) return;
+        g.fillStyle = '#ffffff';
+        g.beginPath();
+        if (g.roundRect) g.roundRect(5, 9, 18, 12, 3); else g.rect(5, 9, 18, 12);
+        g.fill();
+        g.fillRect(10, 6.5, 7, 3.5);
+        g.fillStyle = '#3a3a3c';
+        g.beginPath(); g.arc(14, 15, 3.6, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#ffffff';
+        g.beginPath(); g.arc(14, 15, 1.8, 0, Math.PI * 2); g.fill();
+        map.addImage('rk-camera', g.getImageData(0, 0, size, size), { pixelRatio: 2 });
+      } catch (e) { /* the dot alone is fine */ }
+    }
 
     function addOverlayLayers() {
       for (const id of OVERLAY_SOURCES) map.addSource(id, { type: 'geojson', data: overlayData(id) });
@@ -845,6 +901,17 @@
       const labelPaint = { 'text-color': theme === 'dark' ? '#f4f6fa' : '#1f2937',
                            'text-halo-color': theme === 'dark' ? '#0e1116' : '#ffffff', 'text-halo-width': 1.4 };
       const font = ['Noto Sans Regular'];
+
+      // Live traffic: each stretch of road coloured by how fast it is moving, under the map's own
+      // road names. Drawn slightly to the left of the line, as Singapore drives on the left, so the
+      // two directions of a road sit side by side.
+      const firstLabel = (map.getStyle().layers || []).find((l) => l.type === 'symbol' && !/^ov-/.test(l.id));
+      map.addLayer({ id: 'ov-traffic-line', type: 'line', source: 'ov-traffic',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': ['match', ['get', 'level'], 2, '#ff3b30', 1, '#ff9500', '#34c759'],
+                 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.6, 13, 3, 16, 5.5, 18, 8],
+                 'line-offset': ['interpolate', ['linear'], ['zoom'], 10, -0.5, 13, -1.5, 16, -3, 18, -4.5],
+                 'line-opacity': 0.88 } }, firstLabel ? firstLabel.id : undefined);
 
       // Rain: a soft circle over each forecast area where rain is expected, and live rain gauges
       map.addLayer({ id: 'ov-rain-area', type: 'circle', source: 'ov-rain', paint: {
@@ -921,6 +988,34 @@
       map.addLayer({ id: 'ov-community-name', type: 'symbol', source: 'ov-community', minzoom: 15,
         layout: { 'text-field': ['get', 'name'], 'text-font': font, 'text-size': 12, 'text-anchor': 'top',
                   'text-offset': [0, 0.9], 'text-max-width': 8 },
+        paint: labelPaint });
+
+      // Traffic cameras: a dark dot with a small camera drawn on it, the name once zoomed in
+      addCameraIcon();
+      map.addLayer({ id: 'ov-cameras-dot', type: 'circle', source: 'ov-cameras', paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 7, 15, 11], 'circle-color': '#3a3a3c',
+        'circle-stroke-width': 2, 'circle-stroke-color': edge } });
+      if (map.hasImage && map.hasImage('rk-camera')) {
+        map.addLayer({ id: 'ov-cameras-icon', type: 'symbol', source: 'ov-cameras',
+          layout: { 'icon-image': 'rk-camera', 'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.62, 15, 1],
+                    'icon-allow-overlap': true, 'icon-ignore-placement': true } });
+      }
+      map.addLayer({ id: 'ov-cameras-name', type: 'symbol', source: 'ov-cameras', minzoom: 14,
+        layout: { 'text-field': ['get', 'name'], 'text-font': font, 'text-size': 11.5, 'text-anchor': 'top',
+                  'text-offset': [0, 1.1], 'text-max-width': 9, 'text-optional': true },
+        paint: labelPaint });
+
+      // Flash floods: a red-ringed blue dot with "!" that stands out at any zoom
+      map.addLayer({ id: 'ov-floods-ring', type: 'circle', source: 'ov-floods', paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 16, 16, 34], 'circle-color': '#0040dd',
+        'circle-opacity': 0.16, 'circle-stroke-color': '#ff3b30', 'circle-stroke-width': 2, 'circle-stroke-opacity': 0.8 } });
+      map.addLayer({ id: 'ov-floods-dot', type: 'circle', source: 'ov-floods', paint: {
+        'circle-radius': 11, 'circle-color': '#0040dd', 'circle-stroke-width': 2.5, 'circle-stroke-color': edge } });
+      map.addLayer({ id: 'ov-floods-mark', type: 'symbol', source: 'ov-floods',
+        layout: { 'text-field': '!', 'text-font': font, 'text-size': 15, 'text-allow-overlap': true, 'text-ignore-placement': true },
+        paint: { 'text-color': '#ffffff' } });
+      map.addLayer({ id: 'ov-floods-name', type: 'symbol', source: 'ov-floods', minzoom: 11,
+        layout: { 'text-field': 'Flash flood', 'text-font': font, 'text-size': 12.5, 'text-anchor': 'top', 'text-offset': [0, 1.5] },
         paint: labelPaint });
 
       // Toilets, drinking water, shelters: read straight from the map tiles, so they appear instantly
@@ -1008,6 +1103,8 @@
       switch (p.t) {
         case 'community': return { name: p.name, address: [p.category, p.note].filter(Boolean).join(' · '), category: 'Added by riders' };
         case 'incident': return { name: p.type, address: p.message, noRecent: true };
+        case 'camera': return { name: p.name, address: p.road ? p.road + ' · live traffic camera' : 'Live traffic camera', camera: p.id, noRecent: true };
+        case 'flood': return floodPlace(p.id);
         case 'moto': return { name: niceName(p.name), address: lotWords(p.lots, 'motorcycle'), noRecent: true };
         case 'car': return { name: niceName(p.name), address: lotWords(p.lots, 'car'), noRecent: true };
         case 'bus': return busStopPlace(p);
@@ -1020,6 +1117,15 @@
         case 'rain': return { name: p.name, address: p.forecast + (p.until ? ' until ' + clockText(p.until) : ' in the next 2 hours'), info: true };
       }
       return null;
+    }
+
+    // A PUB flood alert, for its card: where, what PUB says, and when it was issued
+    function floodPlace(id) {
+      const f = feeds.floods.data && (feeds.floods.data.floods || []).find((x) => x.id === id);
+      if (!f) return null;
+      const issuedSaid = /issued/i.test(f.text || '');   // PUB's text usually ends "Issued 1705 hrs."
+      const lines = [f.text, f.instruction, !issuedSaid && f.at ? 'Issued ' + shortClock(f.at) + ' by PUB' : 'From PUB'].filter(Boolean);
+      return { name: 'Flash flood' + (f.area ? ' · ' + f.area : ''), address: '', lines, info: true, flood: true };
     }
 
     // A bus stop as a place: "Opp Blk 123" · Bus stop 84009 · Bedok Nth Rd
@@ -1097,7 +1203,8 @@
       const alertGroup = el('div', 'group group-alerts');
       alertGroup.append(
         toggleRow('Rain alerts', 'When rain is forecast near you in the next 2 hours', alertSettings.rain, null, () => setAlert('rain')),
-        toggleRow('Heat alerts', 'A reminder to drink water when heat stress is high', alertSettings.heat, null, () => setAlert('heat')));
+        toggleRow('Heat alerts', 'A reminder to drink water when heat stress is high', alertSettings.heat, null, () => setAlert('heat')),
+        toggleRow('Flood alerts', 'When PUB reports a flash flood within 3 km of you', alertSettings.flood, null, () => setAlert('flood')));
       panel.append(alertGroup);
 
       panel.append(el('h3', null, 'Riding'));
@@ -1213,9 +1320,23 @@
     }
 
     async function checkAlerts() {
-      if (!alertSettings.rain && !alertSettings.heat) { renderAlerts([]); return; }
-      const w = await loadFeed('weather');
+      if (!alertSettings.rain && !alertSettings.heat && !alertSettings.flood) { renderAlerts([]); return; }
+      const [w, fl] = await Promise.all([alertSettings.rain || alertSettings.heat ? loadFeed('weather') : null,
+                                         alertSettings.flood ? loadFeed('floods') : null]);
       const found = [];
+      if (fl && fl.floods && fl.floods.length) {
+        const n = nearestTo(fl.floods, whereAmI());
+        if (n && n.dist < 3000) {
+          const f = n.item;
+          found.push({
+            kind: 'flood', area: f,
+            key: 'flood|' + f.id,
+            short: 'Flash flood ' + (n.dist < 1000 ? 'near you' : (n.dist / 1000).toFixed(1) + ' km away'),
+            text: (f.text || 'Flash flood' + (f.area ? ' at ' + f.area : '')) + (f.instruction && !f.text ? ' ' + f.instruction : ''),
+            speech: 'Flash flood alert' + (f.area ? ' at ' + f.area : ' near you') + '. Please avoid the area.'
+          });
+        }
+      }
       if (w) {
         const here = whereAmI();
         if (alertSettings.rain && w.forecast && w.forecast.areas.length) {
@@ -1254,7 +1375,7 @@
     // Folded: one slim line ("🌧 Showers till 3 pm · 🥵 High heat"). Open: each alert in full.
     let alertsOpen = false;
     let shownAlerts = [];
-    const ALERT_ICON = { rain: '🌧 ', heat: '🥵 ' };
+    const ALERT_ICON = { rain: '🌧 ', heat: '🥵 ', flood: '🌊 ' };
 
     function dismissAlert(a) {
       dismissedAlerts.add(a.key);
@@ -1294,6 +1415,10 @@
           if (a.kind === 'rain') {
             if (!shownLayers.rain) setLayer('rain', true);
             map.flyTo({ center: [a.area.lng, a.area.lat], zoom: 12 });
+          }
+          if (a.kind === 'flood') {
+            if (!shownLayers.floods) setLayer('floods', true);
+            map.flyTo({ center: [a.area.lng, a.area.lat], zoom: 15 });
           }
         });
         const x = el('button', 'alert-close', '×');
@@ -1693,9 +1818,15 @@
         ok.addEventListener('click', () => { if (riding) showRideCard(); else if (start || end) showTrip(); else hideCard(); });
         const row = el('div', 'row');
         row.append(ok);
-        showCard([el('div', 'place', r.name), el('div', 'sub', r.address), row]);
+        const body = [el('div', 'place', r.name)];
+        if (r.address) body.push(el('div', 'sub', r.address));
+        for (const line of r.lines || []) body.push(el('div', 'flood-text', line));
+        body.push(row);
+        showCard(body);
+        if (r.flood) track('flood_card');
         return;
       }
+      if (r.camera) { showCameraCard(r); return; }
 
       picked = r;
       if (!r.noRecent) remember(r);
@@ -1880,6 +2011,61 @@
       track('bus_arrival');
       timer = setInterval(() => { if (!box.isConnected) { clearInterval(timer); return; } load(); }, 30000);
       return box;
+    }
+
+    // A traffic camera's live photo. LTA takes a new one every minute or two; the card keeps it fresh
+    // while open, and offers the cameras nearby (the Causeway has three, for example).
+    function showCameraCard(r) {
+      picked = null;
+      if (pickedMarker) { pickedMarker.remove(); pickedMarker = null; }
+      setFollowMe(false);
+      map.flyTo({ center: [r.lng, r.lat], zoom: Math.max(map.getZoom(), 14) });
+      const cameraById = (id) => (feeds.cameras.data && feeds.cameras.data.cameras || []).find((c) => c.id === id);
+      const close = el('button', 'card-close', '×');
+      close.type = 'button';
+      close.setAttribute('aria-label', 'Close');
+      close.addEventListener('click', closePlaceCard);
+      const img = el('img', 'cam-photo');
+      img.alt = 'Live traffic camera photo: ' + r.name;
+      img.referrerPolicy = 'no-referrer';
+      img.decoding = 'async';
+      const when = el('div', 'cam-when', 'Loading photo\u2026');
+      let shownAt = '';
+      const show = (cam) => {
+        if (!cam || !cam.img || img.getAttribute('src') === cam.img) return;
+        shownAt = cam.at;
+        img.src = cam.img;
+      };
+      img.addEventListener('load', () => { when.textContent = (shownAt ? 'Photo from ' + shortClock(shownAt) : 'Live photo') + ' \u00b7 updates by itself'; });
+      img.addEventListener('error', () => { when.textContent = 'This camera\u2019s photo isn\u2019t available right now'; });
+      const parts = [close, el('div', 'place place-head', r.name), el('div', 'sub place-head', r.address), img, when];
+      // Up to 3 other cameras within 3 km, nearest first
+      const near = (feeds.cameras.data && feeds.cameras.data.cameras || [])
+        .filter((c) => c.id !== r.camera)
+        .map((c) => ({ c, d: metresBetween([c.lng, c.lat], [r.lng, r.lat]) }))
+        .filter((x) => x.d < 3000).sort((a, b) => a.d - b.d).slice(0, 3);
+      if (near.length) {
+        const row = el('div', 'cam-near');
+        for (const { c } of near) {
+          const b = el('button', null, c.name);
+          b.type = 'button';
+          b.addEventListener('click', () => choose({ name: c.name, address: (c.road ? c.road + ' \u00b7 ' : '') + 'live traffic camera',
+                                                     camera: c.id, lat: c.lat, lng: c.lng, noRecent: true }));
+          row.append(b);
+        }
+        parts.push(row);
+      }
+      showCard(parts);
+      track('camera_view');
+      show(cameraById(r.camera));
+      if (!cameraById(r.camera)) loadFeed('cameras').then(() => show(cameraById(r.camera)));
+      const timer = setInterval(async () => {
+        if (!img.isConnected) { clearInterval(timer); return; }
+        if (document.visibilityState !== 'visible') return;
+        feeds.cameras.at = 0;                 // ask for fresh photo links
+        await loadFeed('cameras');
+        show(cameraById(r.camera));
+      }, 60 * 1000);
     }
 
     // Between about 12:30 am and 5:30 am Singapore time most buses have stopped for the night
@@ -3041,7 +3227,7 @@
     }
 
     // ---------- anonymous usage counts (no user, device or location) ----------
-    const APP_VERSION = '2026.11.09';
+    const APP_VERSION = '2026.11.12';
     const lastTracked = {};
     function track(name) {
       if (!/^[a-z_:]{2,40}$/.test(name)) return;
@@ -3397,7 +3583,8 @@
     const CREDITS = [
       'Map data © OpenStreetMap contributors. Map tiles: OpenFreeMap, © OpenMapTiles.',
       'Addresses and routes: OneMap, © Singapore Land Authority.',
-      'Traffic incidents and car park availability: LTA DataMall.',
+      'Traffic incidents, live traffic speeds, traffic cameras and car park availability: LTA DataMall.',
+      'Flood alerts: PUB, via LTA DataMall.',
       'Weather and heat stress: National Environment Agency, via data.gov.sg (Singapore Open Data Licence).',
       'Business search: Photon by komoot, using OpenStreetMap data.'
     ];

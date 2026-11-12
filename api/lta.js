@@ -3,9 +3,13 @@
 //   /api/lta?kind=carparks    live free lots at HDB, URA and LTA car parks (cars and motorcycles)
 //   /api/lta?kind=busstops    every bus stop: 5-digit code, name ("Opp Blk 123"), road, location
 //   /api/lta?kind=arrival&stop=84011   live arrival times of every bus service at one stop
+//   /api/lta?kind=traffic     how fast expressways and major roads are moving now (speed bands)
+//   /api/lta?kind=cameras     live traffic camera photos (expressways, Woodlands and Tuas Checkpoints)
+//   /api/lta?kind=floods      PUB flash flood alerts in force now
 // Uses LTA DataMall with the free key stored in Vercel as LTA_ACCOUNT_KEY.
 
 const { quickLimit, tooMany } = require('./_security');
+const { readCameras, readSpeedBands, readFloods } = require('./_roads');
 
 const BASE = 'https://datamall2.mytransport.sg/ltaodataservice/';
 
@@ -13,29 +17,71 @@ function inSingapore(lat, lng) {
   return lat > 1.1 && lat < 1.5 && lng > 103.5 && lng < 104.2;
 }
 
+// One page (500 records) of a DataMall dataset
+async function fetchPage(endpoint, key, page) {
+  const url = BASE + endpoint + (page ? '?$skip=' + page * 500 : '');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  let resp;
+  try {
+    resp = await fetch(url, { headers: { AccountKey: key, accept: 'application/json' }, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (resp.status === 401 || resp.status === 403) {
+    throw Object.assign(new Error('LTA rejected the key (status ' + resp.status + '). Check LTA_ACCOUNT_KEY in Vercel.'), { status: 502 });
+  }
+  if (resp.status === 404) throw Object.assign(new Error('LTA dataset not found: ' + endpoint), { status: 502, notFound: true });
+  if (!resp.ok) throw Object.assign(new Error('LTA data failed (status ' + resp.status + ')'), { status: 502 });
+  const json = await resp.json();
+  return Array.isArray(json.value) ? json.value : [];
+}
+
 // DataMall returns 500 records at a time; keep asking until a short page comes back
 async function fetchAll(endpoint, key, maxPages) {
   const all = [];
   for (let page = 0; page < maxPages; page++) {
-    const url = BASE + endpoint + (page ? '?$skip=' + page * 500 : '');
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    let resp;
-    try {
-      resp = await fetch(url, { headers: { AccountKey: key, accept: 'application/json' }, signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
-    }
-    if (resp.status === 401 || resp.status === 403) {
-      throw Object.assign(new Error('LTA rejected the key (status ' + resp.status + '). Check LTA_ACCOUNT_KEY in Vercel.'), { status: 502 });
-    }
-    if (!resp.ok) throw Object.assign(new Error('LTA data failed (status ' + resp.status + ')'), { status: 502 });
-    const json = await resp.json();
-    const rows = Array.isArray(json.value) ? json.value : [];
+    const rows = await fetchPage(endpoint, key, page);
     all.push(...rows);
     if (rows.length < 500) break;
   }
   return all;
+}
+
+// Same, for big datasets (speed bands are tens of thousands of road stretches): several pages
+// at a time, stopping at the first short page
+async function fetchAllFast(endpoint, key, maxPages, together = 8) {
+  const all = [];
+  for (let first = 0; first < maxPages; first += together) {
+    const pages = [];
+    for (let p = first; p < Math.min(first + together, maxPages); p++) pages.push(fetchPage(endpoint, key, p));
+    const results = await Promise.all(pages);
+    for (const rows of results) all.push(...rows);
+    if (results.some((rows) => rows.length < 500)) break;
+  }
+  return all;
+}
+
+// The newest LTA address first, older ones if LTA hasn't got it
+async function firstFound(endpoints, get) {
+  let lastError;
+  for (const e of endpoints) {
+    try { return await get(e); } catch (err) { if (!err.notFound) throw err; lastError = err; }
+  }
+  throw lastError;
+}
+
+// A copy kept inside the function between requests, so extra words in the address (which skip
+// Vercel's cache) can't make RiderKaki ask LTA for the same big dataset again and again
+const memo = {};
+async function remembered(name, maxAgeMs, load) {
+  const entry = memo[name] || (memo[name] = { at: 0, value: undefined, pending: null });
+  if (entry.value !== undefined && Date.now() - entry.at < maxAgeMs) return entry.value;
+  if (entry.pending) return entry.pending;          // someone else is already fetching it
+  entry.pending = load()
+    .then((value) => { entry.value = value; entry.at = Date.now(); return value; })
+    .finally(() => { entry.pending = null; });
+  return entry.pending;
 }
 
 function readIncidents(rows) {
@@ -148,6 +194,7 @@ module.exports = async (req, res) => {
   if (kind !== 'arrival' && !quickLimit(req, 'lta-' + (kind === 'busstops' ? 'busstops' : 'live'), kind === 'busstops' ? 6 : 30, 60000)) {
     return tooMany(res);
   }
+  if (kind === 'traffic' && !quickLimit(req, 'lta-traffic', 6, 60000)) return tooMany(res);
   try {
     if (kind === 'incidents') {
       const rows = await fetchAll('TrafficIncidents', key, 4);
@@ -176,7 +223,26 @@ module.exports = async (req, res) => {
       res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300');
       return res.status(200).json({ carparks: readCarparks(rows) });
     }
-    return res.status(400).json({ error: 'Ask for kind=incidents, kind=carparks, kind=busstops or kind=arrival' });
+    if (kind === 'traffic') {
+      // LTA updates speeds every 5 minutes
+      const links = await remembered('traffic', 120000, async () => readSpeedBands(
+        await firstFound(['v4/TrafficSpeedBands', 'v3/TrafficSpeedBands', 'TrafficSpeedBandsv2'], (e) => fetchAllFast(e, key, 200))));
+      res.setHeader('Cache-Control', 's-maxage=180, stale-while-revalidate=300');
+      return res.status(200).json({ links });
+    }
+    if (kind === 'cameras') {
+      // Photo links stop working after 5 minutes, so keep copies short
+      const cameras = await remembered('cameras', 50000, async () => readCameras(
+        await firstFound(['Traffic-Imagesv2', 'Traffic-Images'], (e) => fetchAll(e, key, 2))));
+      res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=60');
+      return res.status(200).json({ cameras });
+    }
+    if (kind === 'floods') {
+      const floods = await remembered('floods', 50000, async () => readFloods(await fetchAll('PubFloodAlerts', key, 2)));
+      res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
+      return res.status(200).json({ floods });
+    }
+    return res.status(400).json({ error: 'Ask for kind=incidents, kind=carparks, kind=busstops, kind=arrival, kind=traffic, kind=cameras or kind=floods' });
   } catch (err) {
     console.error('lta error', err && err.message);   // details stay in the Vercel logs
     return res.status(err.status || 500).json({ error: err.name === 'AbortError' ? 'LTA took too long to answer' : 'Live data is not available right now. Please try again.' });
