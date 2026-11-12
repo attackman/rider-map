@@ -5,6 +5,7 @@
 
 const { quickLimit, tooMany } = require('./_security');
 const { addRoadSigns } = require('./_lanes');
+const { speedLimits } = require('./_speed');
 
 let cachedToken = null;
 let tokenExpiresAt = 0; // milliseconds
@@ -109,6 +110,11 @@ function withSigns(steps, coords) {
   try { return addRoadSigns(steps, coords); } catch (e) { console.warn('road signs:', e.message); return steps; }
 }
 
+// Speed limits along the route: [[from metres, to metres, km/h], ...]
+function withSpeeds(coords) {
+  try { return speedLimits(coords); } catch (e) { console.warn('speed limits:', e.message); return []; }
+}
+
 function parsePoint(text) {
   const parts = String(text || '').split(',').map(Number);
   if (parts.length !== 2 || !parts.every(Number.isFinite)) return null;
@@ -160,7 +166,8 @@ module.exports = async (req, res) => {
       distance_m: Number(summary.total_distance) || null,
       time_s: Number(summary.total_time) || null,
       coordinates: coords,
-      steps: withSigns(parseSteps(data.route_instructions), coords)
+      steps: withSigns(parseSteps(data.route_instructions), coords),
+      speeds: withSpeeds(coords)
     });
   } catch (err) {
     console.error('route error', err && err.message);

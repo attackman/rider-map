@@ -71,9 +71,6 @@
   "functions": {
     "api/lta.js": {
       "maxDuration": 30
-    },
-    "api/osm-export.js": {
-      "maxDuration": 60
     }
   }
 }

@@ -290,6 +290,19 @@
     body.riding .search, body.riding .install, body.riding .alerts, body.riding .chips { display: none !important; }
     body.riding.ride-search .search { display: block !important; }
     body.riding.ride-search .turn { display: none !important; }
+    /* Speed while riding, like Google Maps: your speed, and the road's limit in a red-ringed sign */
+    .speed { position: fixed; left: 10px; z-index: 4; display: flex; align-items: center; gap: 8px; pointer-events: none; }
+    .speed[hidden], body.ride-search .speed { display: none; }
+    .speed-now { min-width: 56px; height: 56px; box-sizing: border-box; padding: 6px 8px; border-radius: 14px;
+      background: var(--panel); color: var(--text); box-shadow: var(--shadow); display: flex; flex-direction: column;
+      align-items: center; justify-content: center; line-height: 1; }
+    .speed-now b { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+    .speed-now span { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .speed.over .speed-now { background: #ff3b30; color: #ffffff; }
+    .speed.over .speed-now span { color: rgba(255, 255, 255, 0.85); }
+    .speed-limit { width: 52px; height: 52px; box-sizing: border-box; border-radius: 50%; background: #ffffff;
+      border: 5px solid #e3191e; color: #111111; display: flex; align-items: center; justify-content: center;
+      font-size: 21px; font-weight: 700; letter-spacing: -0.03em; box-shadow: var(--shadow); }
     .icon-btn[hidden] { display: none; }
 
     /* ---------- layers and alerts sheet: an iOS bottom sheet with grouped lists ---------- */
@@ -597,6 +610,7 @@
   </div>
 
   <div id="turn" class="turn" hidden></div>
+  <div id="speed" class="speed" hidden aria-live="off"></div>
   <div id="card" class="card" hidden></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="sheet" class="sheet" hidden></div>
@@ -1691,6 +1705,8 @@
 
     // Keep the +/- buttons above the card
     function liftControls() {
+      const sp = document.getElementById('speed');
+      if (sp) sp.style.bottom = ((card.hidden ? 0 : card.offsetHeight) + 14) + 'px';
       const ctrl = document.querySelector('.maplibregl-ctrl-bottom-right');
       if (!ctrl) return;
       ctrl.style.bottom = card.hidden ? '' : (card.offsetHeight + 12) + 'px';
@@ -3260,6 +3276,8 @@
       document.body.classList.remove('riding', 'ride-search');
       turnBox.hidden = true;
       turnBox.innerHTML = '';
+      const speedBox = document.getElementById('speed');
+      if (speedBox) speedBox.hidden = true;
       // Keep the blue dot (now with the facing cone) and go back to watching quietly
       if (meEl()) { meEl().classList.remove('riding'); updateArrow(); }
       if (wasRiding && locationAllowed) { startIdleWatch(); setFollowMe(true); }
@@ -3331,6 +3349,40 @@
 
       if (following) map.easeTo(followView(here, heading, speedKmh));
       showRideCard();
+      updateSpeedSign();
+    }
+
+    // ---------- speed and speed limit while riding ----------
+    // Limits come with the route (from OpenStreetMap): [[from metres, to metres, km/h], ...]
+    function speedLimitHere() {
+      const ranges = lastRoute && Array.isArray(lastRoute.speeds) ? lastRoute.speeds : [];
+      if (!ranges.length || !progress || progress.offRoute_m > 40 || !routeGeo) return null;
+      const here = routeGeo.total - progress.remaining_m;
+      const r = ranges.find((x) => here >= x[0] && here <= x[1]);
+      return r && r[2] >= 10 && r[2] <= 120 ? r[2] : null;
+    }
+    function updateSpeedSign() {
+      const box = document.getElementById('speed');
+      if (!box) return;
+      const motor = mode === 'moto' || mode === 'drive';
+      if (!riding || !motor) { box.hidden = true; return; }
+      const limit = speedLimitHere();
+      const now = lastFix && lastFix.speedKmh != null && lastFix.speedKmh >= 0 && lastFix.speedKmh < 250
+        ? Math.round(lastFix.speedKmh) : null;
+      box.innerHTML = '';
+      if (now != null) {
+        const n = el('div', 'speed-now');
+        n.append(el('b', null, String(now)), el('span', null, 'km/h'));
+        box.append(n);
+      }
+      if (limit) {
+        const l = el('div', 'speed-limit', String(limit));
+        l.setAttribute('aria-label', 'Speed limit ' + limit + ' kilometres an hour');
+        box.append(l);
+      }
+      box.classList.toggle('over', !!(limit && now != null && now > limit + 3));
+      box.hidden = !box.childElementCount;
+      liftControls();
     }
 
     // Where the map should look while following the rider
@@ -3531,7 +3583,7 @@
     }
 
     // ---------- anonymous usage counts (no user, device or location) ----------
-    const APP_VERSION = '2026.11.13c';
+    const APP_VERSION = '2026.11.13d';
     const lastTracked = {};
     function track(name) {
       if (!/^[a-z_:]{2,40}$/.test(name)) return;
@@ -3890,7 +3942,7 @@
       'Addresses and routes: OneMap, © Singapore Land Authority.',
       'Traffic incidents, live traffic speeds, traffic cameras and car park availability: LTA DataMall.',
       'Flood alerts: PUB, via LTA DataMall.',
-      'Expressway exit numbers, road signs and lane arrows: OpenStreetMap contributors.',
+      'Expressway exit numbers, road signs, lane arrows and speed limits: OpenStreetMap contributors.',
       'Weather and heat stress: National Environment Agency, via data.gov.sg (Singapore Open Data Licence).',
       'Business search: Photon by komoot, using OpenStreetMap data.'
     ];
