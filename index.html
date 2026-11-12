@@ -395,6 +395,15 @@
     .next-then { max-width: 100%; box-sizing: border-box; }
     .next-then .then-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .next-then .then-icon { flex: none; width: 22px; height: 22px; display: inline-block; }
+    .next-toward { font-size: 15px; font-weight: 500; opacity: .85; line-height: 1.3; }
+    /* Lane arrows under the banner: lanes to use bright, the others faint */
+    .next-lanes { display: flex; justify-content: center; gap: 6px; padding: 6px 12px; background: var(--banner-then);
+      box-shadow: var(--shadow); }
+    .next-lanes.last { border-radius: 0 0 14px 14px; }
+    .next-lanes .lane { width: 30px; height: 30px; color: #ffffff; opacity: .32; display: inline-block; }
+    .next-lanes .lane.use { opacity: 1; }
+    .next-lanes .lane svg { width: 30px; height: 30px; display: block; }
+    .next-lanes + .next-then { border-radius: 0 0 14px 14px; }
     .next-then .then-icon svg { width: 22px; height: 22px; display: block; }
     .turn .next-words { flex: 1; min-width: 0; }
     .next-search {
@@ -2922,7 +2931,11 @@
         let phrase = phraseFor(kind, street);
         const head = /^head\s+(.+?)(\s+on\s+|$)/i.exec(s.text || '');
         if (kind === 'depart' && head) phrase = 'Head ' + head[1].toLowerCase() + (street ? ' on ' + street : '');
-        return { kind, street, phrase, along: routeGeo.total - snapToRoute(s.lng, s.lat).remaining_m };
+        const sign = { exit: /^[0-9]{1,3}[A-Z]?$/.test(s.exit || '') ? s.exit : '', toward: String(s.toward || '').slice(0, 80),
+                       lanes: Array.isArray(s.lanes) && s.lanes.length >= 2 && s.lanes.length <= 8 ? s.lanes : null };
+        // "Towards PIE / Changi" while staying on the PIE says just "Towards Changi"
+        sign.toward = sign.toward.split(' / ').filter((x) => !sameRoad(x, street)).join(' / ');
+        return { kind, street, phrase, along: routeGeo.total - snapToRoute(s.lng, s.lat).remaining_m, ...sign };
       }).sort((a, b) => a.along - b.along);
       let onRoad = '';                        // the road the rider is on before each step
       for (const step of steps) {
@@ -2965,7 +2978,7 @@
       // Leaving an expressway: always a slip road
       if (isExpressway(onRoad) && !isExpressway(to)) {
         step.kind = 'slight_' + side;
-        step.phrase = 'Take the exit on the ' + side + (to ? ' to ' + to : '');
+        step.phrase = 'Take ' + (step.exit ? 'exit ' + step.exit : 'the exit') + ' on the ' + side + (to ? ' to ' + to : '');
         return;
       }
       // Joining or changing expressway
@@ -3060,11 +3073,15 @@
         if (Date.now() - rideStartedAt > 8000) speak('Continue on ' + n.road + ' for ' + spokenDistance(n.dist));
         return;
       }
+      // "Use the left 2 lanes to take exit 13A on the left, towards Tampines"
+      const lanes = laneWords(n.step);
+      const full = (lanes ? lanes + ' to ' + lowerFirst(n.step.phrase.replace(/^Keep (left|right) to /, '')) : n.step.phrase)
+        + (n.step.toward ? ', towards ' + n.step.toward.replace(/ \/ /g, ' and ') : '');
       if (n.dist <= t.near) {
-        if (!n.step.saidNear) { n.step.saidNear = n.step.saidFar = true; speak(n.step.phrase); }
+        if (!n.step.saidNear) { n.step.saidNear = n.step.saidFar = true; speak(full); }
       } else if (n.dist <= t.far && !n.step.saidFar) {
         n.step.saidFar = true;
-        speak('In ' + spokenDistance(n.dist) + ', ' + lowerFirst(n.step.phrase));
+        speak('In ' + spokenDistance(n.dist) + ', ' + lowerFirst(full));
       }
     }
 
@@ -3079,6 +3096,51 @@
 
     // Big "next turn" banner at the top of the ride card
     const SEARCH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.6-4.6"/></svg>';
+    // Lane arrows from the map, as Google shows them: every lane, the ones to use bright.
+    // OpenStreetMap names: through, left, right, slight_left, sharp_right, reverse, none...
+    const LANE_ANGLE = { through: 0, none: 0, slight_left: -45, left: -90, sharp_left: -135, slight_right: 45, right: 90,
+                         sharp_right: 135, reverse: -170, merge_to_left: -20, merge_to_right: 20 };
+    function lanesToUse(step) {
+      if (!step.lanes) return null;
+      const side = /left/.test(step.kind) ? 'left' : /right/.test(step.kind) ? 'right' : null;
+      const stay = /stay on/.test(step.phrase) || step.kind === 'straight';
+      const exact = step.kind === 'uturn' ? ['reverse'] : step.kind === 'straight' ? ['through'] : [step.kind];
+      const sameSide = side ? ['slight_' + side, side, 'sharp_' + side] : [];
+      for (const wanted of [exact, sameSide, stay ? ['through', 'none'] : []]) {
+        if (!wanted.length) continue;
+        const use = step.lanes.map((arrows) => arrows.some((a) => wanted.includes(a)));
+        if (use.some(Boolean)) {
+          // the arrow to draw on each lane: the matching one on lanes to use, else its first
+          const shown = step.lanes.map((arrows, i) => use[i] ? arrows.find((a) => wanted.includes(a)) : arrows[0]);
+          return { use, shown };
+        }
+      }
+      return null;               // the map's arrows don't fit this turn: show nothing rather than guess
+    }
+    function lanesStrip(step) {
+      const l = lanesToUse(step);
+      if (!l || l.use.every(Boolean)) return null;   // every lane works: nothing to tell
+      const row = el('div', 'next-lanes');
+      row.setAttribute('aria-label', 'Lanes: use ' + l.use.map((u, i) => u ? i + 1 : null).filter(Boolean).join(', ') + ' of ' + l.use.length + ', counting from the left');
+      l.shown.forEach((arrow, i) => {
+        const lane = el('span', 'lane' + (l.use[i] ? ' use' : ''));
+        lane.innerHTML = ARROW_SVG; // fixed icon, no user text
+        lane.style.transform = 'rotate(' + (LANE_ANGLE[arrow] || 0) + 'deg)';
+        row.append(lane);
+      });
+      return row;
+    }
+    // "Use the right lane" / "Use the left 2 lanes", when the lanes to use are on one side
+    function laneWords(step) {
+      const l = lanesToUse(step);
+      if (!l || l.use.every(Boolean)) return '';
+      const n = l.use.filter(Boolean).length, total = l.use.length;
+      const fromLeft = l.use.slice(0, n).every(Boolean), fromRight = l.use.slice(total - n).every(Boolean);
+      const side = fromLeft ? 'left' : fromRight ? 'right' : '';
+      if (!side) return '';
+      return 'Use the ' + side + (n === 1 ? ' lane' : ' ' + n + ' lanes');
+    }
+
     function arrowIcon(kind, cls) {
       const icon = el('span', cls);
       icon.innerHTML = ARROW_SVG; // fixed icon, no user text
@@ -3095,6 +3157,7 @@
       const kind = n && !far ? n.step.kind : 'straight';
       const icon = arrowIcon(kind, 'next-icon');
       const words = el('div', 'next-words');
+      if (n && !far && n.step.toward) words.append(el('div', 'next-toward', 'Towards ' + n.step.toward));
       words.append(el('div', 'next-what', !n ? 'Continue to your destination' : far ? 'Continue on ' + n.road : n.step.phrase));
       if (n) words.append(el('div', 'next-dist', formatDistance(Math.max(10, Math.round(n.dist / 10) * 10))));
       // Search for a new destination mid-ride
@@ -3105,13 +3168,17 @@
       find.addEventListener('click', () => { document.body.classList.add('ride-search'); input.focus(); });
       box.append(icon, words, find);
       const after = far ? n.step : n && n.then;
-      if (!after) return box;
+      // Lanes for the coming turn, from 1.5 km out, like Google
+      const lanes = n && !far && n.dist < 1500 ? lanesStrip(n.step) : null;
+      if (!after && !lanes) return box;
       box.classList.add('has-then');
       const wrap = el('div', 'next-wrap');
+      if (lanes) { if (!after) lanes.classList.add('last'); wrap.append(box, lanes); if (!after) return wrap; }
       const then = el('div', 'next-then');
       then.append(document.createTextNode('Then'), arrowIcon(after.kind, 'then-icon'));
       if (far) then.append(el('span', 'then-text', lowerFirst(after.phrase)));
-      wrap.append(box, then);
+      if (!lanes) wrap.append(box);
+      wrap.append(then);
       return wrap;
     }
 
@@ -3437,7 +3504,7 @@
     }
 
     // ---------- anonymous usage counts (no user, device or location) ----------
-    const APP_VERSION = '2026.11.13b';
+    const APP_VERSION = '2026.11.13c';
     const lastTracked = {};
     function track(name) {
       if (!/^[a-z_:]{2,40}$/.test(name)) return;
@@ -3796,6 +3863,7 @@
       'Addresses and routes: OneMap, © Singapore Land Authority.',
       'Traffic incidents, live traffic speeds, traffic cameras and car park availability: LTA DataMall.',
       'Flood alerts: PUB, via LTA DataMall.',
+      'Expressway exit numbers, road signs and lane arrows: OpenStreetMap contributors.',
       'Weather and heat stress: National Environment Agency, via data.gov.sg (Singapore Open Data Licence).',
       'Business search: Photon by komoot, using OpenStreetMap data.'
     ];

@@ -4,6 +4,7 @@
 // variables), asks OneMap for a route, and returns the line plus distance and time.
 
 const { quickLimit, tooMany } = require('./_security');
+const { addRoadSigns } = require('./_lanes');
 
 let cachedToken = null;
 let tokenExpiresAt = 0; // milliseconds
@@ -103,6 +104,11 @@ function parseSteps(instructions) {
   return steps.slice(0, 300);
 }
 
+// Exit numbers, "towards" signs and lane arrows from OpenStreetMap; the route still works without them
+function withSigns(steps, coords) {
+  try { return addRoadSigns(steps, coords); } catch (e) { console.warn('road signs:', e.message); return steps; }
+}
+
 function parsePoint(text) {
   const parts = String(text || '').split(',').map(Number);
   if (parts.length !== 2 || !parts.every(Number.isFinite)) return null;
@@ -154,7 +160,7 @@ module.exports = async (req, res) => {
       distance_m: Number(summary.total_distance) || null,
       time_s: Number(summary.total_time) || null,
       coordinates: coords,
-      steps: parseSteps(data.route_instructions)
+      steps: withSigns(parseSteps(data.route_instructions), coords)
     });
   } catch (err) {
     console.error('route error', err && err.message);
