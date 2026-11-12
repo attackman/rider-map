@@ -65,7 +65,7 @@ async function fetchAllFast(endpoint, key, maxPages, together = 8) {
 // Traffic camera photos from data.gov.sg (no key needed)
 async function fetchGovCameras() {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 6000);
+  const timer = setTimeout(() => controller.abort(), 8000);
   try {
     const resp = await fetch('https://api.data.gov.sg/v1/transport/traffic-images', { headers: { accept: 'application/json' }, signal: controller.signal });
     if (!resp.ok) throw new Error('data.gov.sg cameras failed (status ' + resp.status + ')');
@@ -248,7 +248,8 @@ module.exports = async (req, res) => {
       const cameras = await remembered('cameras', 50000, async () => {
         const [lta, gov] = await Promise.all([
           firstFound(['Traffic-Imagesv2', 'Traffic-Images'], (e) => fetchAll(e, key, 2)).then(readCameras).catch(() => []),
-          fetchGovCameras().catch(() => [])]);
+          fetchGovCameras().catch((e) => { console.warn('data.gov.sg cameras:', e.name === 'AbortError' ? 'timed out' : e.message); return []; })]);
+        if (gov.length < 30) console.warn('data.gov.sg cameras: only', gov.length);
         if (!lta.length && !gov.length) throw Object.assign(new Error('no traffic cameras'), { status: 502 });
         return mergeCameras(lta, gov);
       });
